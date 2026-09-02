@@ -87,28 +87,31 @@
 #wa-toggle-btn:hover { filter: brightness(1.1); }
 #wa-toggle-btn.active { outline: 2px solid #a78bfa; outline-offset: 1px; }
 
-/* Panou clasament — fix în dreapta, redus la 10 cifre; se "aprinde" doar la interacțiune */
+/* Panou clasament — bilele lipite EXACT de marginea din dreapta a ferestrei (0 padding pe
+   partea dreaptă, right:0 pe panou — nicio distanță până la bara de scroll). Aliniate
+   vertical, mărime normală, citeață, statice — nicio cutie/fundal nu mai apare la hover.
+   Poziția "top" vine din JS (positionLeaderboardPanel), ca să urmărească bara de unelte
+   deschisă/închisă. Info la hover = tooltip nativ (title, vezi renderSidebar), click =
+   detalii complete (.wa-lb-detail, mai jos). */
 #wa-leaderboard-panel {
   position: fixed;
-  top: 70px;
-  right: 12px;
+  top: 70px; /* fallback până rulează JS-ul, care îl suprascrie imediat */
+  right: 0;
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 4px;
-  background: #1e1b2e;
-  border: 1px solid #3d3560;
-  border-radius: 10px;
-  padding: 6px;
+  padding: 4px 0 4px 4px;
   pointer-events: auto;
   z-index: 2147483001;
-  opacity: 0.55;
+  opacity: 0.85;
   transition: opacity 0.15s;
 }
 #wa-leaderboard-panel:hover { opacity: 1; }
 
 .wa-lb-slot {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -118,6 +121,7 @@
   color: #8b839f;
   background: #2a2545;
   border: 1px solid #3d3560;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); /* se distinge de orice fundal are pagina dedesubt */
 }
 .wa-lb-slot.wa-lb-filled {
   color: white;
@@ -125,28 +129,6 @@
   border-color: rgba(255, 255, 255, 0.4);
 }
 .wa-lb-slot.wa-lb-filled:hover { transform: scale(1.15); }
-
-/* Filtru "Arată de la X voturi" — legat de Top, nu de uneltele de desen */
-.wa-lb-filter {
-  margin-top: 2px;
-  padding-top: 6px;
-  border-top: 1px solid #3d3560;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: #c9c3e6;
-  font-size: 10px;
-  white-space: nowrap;
-}
-.wa-lb-filter input[type="number"] {
-  width: 32px;
-  padding: 2px 3px;
-  border-radius: 5px;
-  border: 1px solid #3d3560;
-  background: #14102a;
-  color: #eae6ff;
-  font-size: 11px;
-}
 
 /* Popover de detalii la click pe o cifră */
 .wa-lb-detail {

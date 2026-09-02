@@ -77,9 +77,11 @@
 
     sizeLayers();
     positionToolbar();
+    positionLeaderboardPanel();
     window.addEventListener("resize", () => {
       sizeLayers();
       positionToolbar();
+      positionLeaderboardPanel();
     });
     // resize/zoom pot rearanja pagina (layout responsive) — recalculăm pozițiile ancorate
     window.addEventListener("resize", debounce(repositionAnchoredAnnotations, 150));
@@ -165,10 +167,10 @@
     return el("div", { id: "wa-topbar" }, els.toggleBtn);
   }
 
-  // Panou permanent, redus în mod normal la 10 cifre — TOP GLOBAL, de pe toate paginile
-  // adnotate, nu doar cea curentă (vezi refreshGlobalTop). Colorate dacă locul e ocupat,
-  // gri dacă nu. Click pe o cifră = detalii (și, dacă adnotarea e pe altă pagină, un buton
-  // ca să sari acolo).
+  // Panou permanent — doar 10 bile statice, lipite de marginea din dreapta, TOP GLOBAL
+  // de pe toate paginile adnotate (vezi refreshGlobalTop). Colorate dacă locul e ocupat,
+  // gri dacă nu. Hover pe o bilă = tooltip nativ cu numele și pagina; click = detalii
+  // complete (și, dacă adnotarea e pe altă pagină, un buton ca să sari acolo).
   function buildLeaderboardPanel() {
     els.leaderboardSlots = [];
     const slots = [];
@@ -177,34 +179,7 @@
       els.leaderboardSlots.push(slot);
       slots.push(slot);
     }
-
-    // Filtru pe pagină: ascunde tot ce are mai puține voturi decât numărul introdus.
-    // Stă lipit sub Top ca să fie clar că se leagă de voturi, nu e o unealtă de desen.
-    const minVotesInput = el("input", {
-      type: "number",
-      min: "0",
-      placeholder: "0",
-      value: "0",
-      title: "Arată doar meme-urile cu cel puțin atâtea voturi",
-      oninput: (e) => {
-        state.minVotes = Number(e.target.value) || 0;
-        applyVoteFilter();
-      },
-    });
-    const filterRow = el(
-      "label",
-      { class: "wa-lb-filter", title: "Introdu un număr ca să vezi doar meme-urile cu cel puțin atâtea voturi" },
-      "Arată de la",
-      minVotesInput,
-      "voturi"
-    );
-
-    return el(
-      "div",
-      { id: "wa-leaderboard-panel", title: "Top global — cele mai votate adnotări de pe toate paginile" },
-      ...slots,
-      filterRow
-    );
+    return el("div", { id: "wa-leaderboard-panel" }, ...slots);
   }
 
   // Bara de unelte atârnă chiar sub banda permanentă, indiferent dacă e deschisă sau nu.
@@ -213,11 +188,21 @@
     els.toolbar.style.top = h + "px";
   }
 
+  // Panoul de Top stă mereu sub tot ce e deasupra lui — banda permanentă, și bara de
+  // unelte pe deasupra ei, dacă e deschisă. Recalculat la fiecare deschidere/închidere
+  // a bării, nu doar o dată la pornire, altfel s-ar suprapune peste ea cât e deschisă.
+  function positionLeaderboardPanel() {
+    const topbarH = els.topbar.getBoundingClientRect().height;
+    const toolbarH = els.toolbar.getBoundingClientRect().height; // 0 cât timp bara e ascunsă
+    els.leaderboardPanel.style.top = topbarH + toolbarH + 8 + "px";
+  }
+
   function toggleToolbar(forceShow) {
     state.toolbarVisible = typeof forceShow === "boolean" ? forceShow : !state.toolbarVisible;
     els.toolbar.hidden = !state.toolbarVisible;
     els.toggleBtn?.classList.toggle("active", state.toolbarVisible);
     if (!state.toolbarVisible) setActiveTool(null);
+    positionLeaderboardPanel();
   }
 
   function setActiveTool(tool) {
@@ -1764,7 +1749,8 @@
       }
       slot.className = "wa-lb-slot wa-lb-filled";
       slot.style.background = ann.data?.color || "#7c3aed";
-      slot.title = `${shortLabel(ann)} — click pentru detalii`;
+      // tooltip nativ la hover — nume + pagina pe care e adnotarea; click = detalii complete
+      slot.title = `${shortLabel(ann)} — pe ${shortenUrl(ann.url)}\nClick pentru detalii`;
       slot.onclick = () => showLeaderboardDetail(ann, slot);
     });
   }
