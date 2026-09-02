@@ -3,7 +3,7 @@
   "name": "Web Annotate",
   "version": "0.1.0",
   "description": "Adaugă graffiti, bule cu text și comentarii pe orice pagină web sau video.",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "alarms"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "background.js"
