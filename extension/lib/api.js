@@ -1,4 +1,4 @@
-// Client subțire pentru API-ul backend-ului Web Annotate.
+// Client subțire pentru API-ul backend-ului Adormis.
 (function () {
   async function base() {
     return window.WA_Storage.getServerUrl();

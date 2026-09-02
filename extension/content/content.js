@@ -1,4 +1,4 @@
-// Web Annotate — content script principal.
+// Adormis — content script principal.
 // Injectează un layer transparent peste pagină pentru desen/adnotări
 // și randează adnotările salvate de toți utilizatorii pentru acest URL.
 (function () {
@@ -302,7 +302,7 @@
       try {
         await WA_Api.updateAnnotation(ann.id, state.userId, { text });
       } catch (err) {
-        console.error("[Web Annotate] Nu am putut salva editarea:", err);
+        console.error("[Adormis] Nu am putut salva editarea:", err);
       }
       onSave?.(text);
     });
@@ -381,7 +381,7 @@
         try {
           await WA_Api.updateAnnotation(ann.id, state.userId, { videoRange: newRange });
         } catch (err) {
-          console.error("[Web Annotate] Nu am putut salva intervalul:", err);
+          console.error("[Adormis] Nu am putut salva intervalul:", err);
         }
       }
       popover.remove();
@@ -447,7 +447,7 @@
       try {
         await WA_Api.updateAnnotation(ann.id, state.userId, patch);
       } catch (err) {
-        console.error("[Web Annotate] Nu am putut salva editarea:", err);
+        console.error("[Adormis] Nu am putut salva editarea:", err);
       }
       popover.remove();
     };
@@ -555,7 +555,7 @@
       try {
         await WA_Api.updateAnnotation(ann.id, state.userId, patch);
       } catch (err) {
-        console.error("[Web Annotate] Nu am putut salva poziția nouă:", err);
+        console.error("[Adormis] Nu am putut salva poziția nouă:", err);
       }
     }
 
@@ -730,7 +730,7 @@
             scale: ann.data.scale,
             rotate: ann.data.rotate,
           }).catch((err) => {
-            console.error("[Web Annotate] Nu am putut salva zoom/rotire:", err);
+            console.error("[Adormis] Nu am putut salva zoom/rotire:", err);
           });
         }
         window.addEventListener("pointermove", onPointerMove);
@@ -878,7 +878,7 @@
           makeStyleEditableOnDblClick(ann, path);
           registerAnnotation(ann, path, control);
         } catch (err) {
-          console.error("[Web Annotate] Nu am putut salva desenul:", err);
+          console.error("[Adormis] Nu am putut salva desenul:", err);
           path.remove();
         }
       }
@@ -999,7 +999,7 @@
           makeStyleEditableOnDblClick(ann, group);
           registerAnnotation(ann, group, control);
         } catch (err) {
-          console.error("[Web Annotate] Nu am putut salva spray-ul:", err);
+          console.error("[Adormis] Nu am putut salva spray-ul:", err);
           group.remove();
         }
       }
@@ -1218,7 +1218,7 @@
         makeStyleEditableOnDblClick(ann, preview);
         registerAnnotation(ann, preview, control);
       } catch (err) {
-        console.error("[Web Annotate] Nu am putut salva forma:", err);
+        console.error("[Adormis] Nu am putut salva forma:", err);
         preview?.remove();
       }
       resetState();
@@ -1322,7 +1322,7 @@
         });
         renderTextAnnotation(ann);
       } catch (err) {
-        console.error("[Web Annotate] Nu am putut salva textul:", err);
+        console.error("[Adormis] Nu am putut salva textul:", err);
       }
     };
     confirmBar.querySelector(".wa-spray-cancel").onclick = () => cleanup();
@@ -1397,7 +1397,7 @@
         });
         renderBubbleAnnotation(ann);
       } catch (err) {
-        console.error("[Web Annotate] Nu am putut salva bula:", err);
+        console.error("[Adormis] Nu am putut salva bula:", err);
       }
     };
     confirmBar.querySelector(".wa-spray-cancel").onclick = () => cleanup();
@@ -1500,7 +1500,7 @@
           renderLinkAnnotation(ann);
         }
       } catch (err) {
-        console.error("[Web Annotate] Nu am putut salva link-ul:", err, err?.stack);
+        console.error("[Adormis] Nu am putut salva link-ul:", err, err?.stack);
       }
       popover.remove();
     };
@@ -1763,7 +1763,7 @@
     try {
       state.globalTop = await WA_Api.listTopGlobal(10);
     } catch (err) {
-      console.warn("[Web Annotate] Nu am putut încărca top-ul global:", err);
+      console.warn("[Adormis] Nu am putut încărca top-ul global:", err);
     }
     renderSidebar();
   }
@@ -2034,7 +2034,7 @@
       sizeLayers();
       repositionAnchoredAnnotations(); // pagina poate fi deja alt layout decât la creare
     } catch (err) {
-      console.warn("[Web Annotate] Nu pot contacta serverul (e pornit?):", err);
+      console.warn("[Adormis] Nu pot contacta serverul (e pornit?):", err);
     }
   }
 

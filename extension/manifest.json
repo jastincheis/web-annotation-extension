@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Web Annotate",
+  "name": "Adormis",
   "version": "0.1.0",
   "description": "Adaugă graffiti, bule cu text și comentarii pe orice pagină web sau video.",
   "permissions": ["storage", "activeTab", "scripting", "alarms"],
@@ -9,7 +9,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Web Annotate",
+    "default_title": "Adormis",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

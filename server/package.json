@@ -1,7 +1,7 @@
 {
   "name": "web-annotate-server",
   "version": "0.1.0",
-  "description": "Backend minimal pentru extensia Web Annotate: salvare/partajare adnotări, votare, raportare.",
+  "description": "Backend minimal pentru extensia Adormis: salvare/partajare adnotări, votare, raportare.",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

@@ -19,5 +19,5 @@ app.get("/api/version", (_req, res) => res.sendFile(path.join(__dirname, "versio
 app.use("/api/annotations", annotationsRouter);
 
 app.listen(PORT, () => {
-  console.log(`Web Annotate server ascultă pe http://localhost:${PORT}`);
+  console.log(`Adormis server ascultă pe http://localhost:${PORT}`);
 });

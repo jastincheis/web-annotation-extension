@@ -43,13 +43,13 @@ async function checkForUpdate() {
       await chrome.storage.local.set({ wa_update_available: { latest, notes: notes || "", current } });
       chrome.action.setBadgeText({ text: "●" });
       chrome.action.setBadgeBackgroundColor({ color: "#22c55e" });
-      chrome.action.setTitle({ title: `Web Annotate — actualizare disponibilă (v${latest})` });
+      chrome.action.setTitle({ title: `Adormis — actualizare disponibilă (v${latest})` });
     } else {
       await chrome.storage.local.remove("wa_update_available");
       chrome.action.setBadgeText({ text: "" });
-      chrome.action.setTitle({ title: "Web Annotate" });
+      chrome.action.setTitle({ title: "Adormis" });
     }
   } catch (err) {
-    console.warn("[Web Annotate] Nu am putut verifica versiunea:", err);
+    console.warn("[Adormis] Nu am putut verifica versiunea:", err);
   }
 }

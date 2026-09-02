@@ -1,4 +1,4 @@
-# Web Annotate — MVP
+# Adormis — MVP
 
 Extensie Chrome pentru adnotări vizuale (graffiti, bule cu text, comentarii) pe orice
 pagină web sau video, cu salvare/partajare publică prin backend propriu, votare și
