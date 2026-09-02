@@ -27,3 +27,7 @@ CUM FUNCȚIONEAZĂ
 Adnotările sunt publice: oricine are extensia instalată le vede pe același URL. Doar autorul unei adnotări o poate muta, edita sau șterge.
 
 Confidențialitate: extensia nu cere cont — identitatea ta e un ID anonim, generat local. Detalii complete în politica de confidențialitate.
+
+## Politică de confidențialitate (link pentru dashboard)
+
+https://claude.ai/code/artifact/5b5b0d64-a764-4407-b294-96b377a36e41
