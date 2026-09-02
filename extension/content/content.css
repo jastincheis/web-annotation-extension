@@ -1,0 +1,500 @@
+#wa-root, #wa-root * {
+  box-sizing: border-box;
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+#wa-root {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 2147483000;
+  pointer-events: none;
+}
+
+#wa-svg-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* Desenele (pen/spray/formă) rămân interactive chiar și în afara modului de desen —
+   "all" (nu doar "auto") ca să poți da click/dublu-click ORIUNDE în interiorul unei
+   forme (ex. un cerc cu contur foarte subțire), nu doar exact pe linia conturului,
+   care altfel e aproape imposibil de nimerit cu mouse-ul. */
+#wa-svg-layer > * {
+  pointer-events: all;
+  /* "fill-box" = originea transformării e centrul FORMEI (nu colțul 0,0 al canvas-ului
+     SVG întreg) — esențial ca zoom/rotire să pivoteze din centrul desenului, nu din
+     colțul paginii. */
+  transform-box: fill-box;
+  transform-origin: center;
+}
+#wa-svg-layer.wa-drawing {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+#wa-elements-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+#wa-elements-layer.wa-drawing {
+  pointer-events: auto;
+  cursor: text;
+}
+#wa-elements-layer > * {
+  pointer-events: auto;
+}
+
+/* Bandă permanentă sus de tot — mereu vizibilă, chiar sub bara de adresă a browserului.
+   Conține butonul de pornit uneltele + rezumatul "cine a pus ce" pe pagina curentă. */
+#wa-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  background: #1e1b2e;
+  border-bottom: 1px solid #3d3560;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  z-index: 2147483002; /* peste #wa-toolbar, ca banda să rămână vizibilă și când uneltele sunt deschise */
+}
+
+#wa-toggle-btn {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: linear-gradient(135deg, #7c3aed, #ec4899);
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#wa-toggle-btn:hover { filter: brightness(1.1); }
+#wa-toggle-btn.active { outline: 2px solid #a78bfa; outline-offset: 1px; }
+
+/* Panou clasament — fix în dreapta, redus la 10 cifre; se "aprinde" doar la interacțiune */
+#wa-leaderboard-panel {
+  position: fixed;
+  top: 70px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #1e1b2e;
+  border: 1px solid #3d3560;
+  border-radius: 10px;
+  padding: 6px;
+  pointer-events: auto;
+  z-index: 2147483001;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+#wa-leaderboard-panel:hover { opacity: 1; }
+
+.wa-lb-slot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #8b839f;
+  background: #2a2545;
+  border: 1px solid #3d3560;
+}
+.wa-lb-slot.wa-lb-filled {
+  color: white;
+  cursor: pointer;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.wa-lb-slot.wa-lb-filled:hover { transform: scale(1.15); }
+
+/* Filtru "Arată de la X voturi" — legat de Top, nu de uneltele de desen */
+.wa-lb-filter {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid #3d3560;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #c9c3e6;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.wa-lb-filter input[type="number"] {
+  width: 32px;
+  padding: 2px 3px;
+  border-radius: 5px;
+  border: 1px solid #3d3560;
+  background: #14102a;
+  color: #eae6ff;
+  font-size: 11px;
+}
+
+/* Popover de detalii la click pe o cifră */
+.wa-lb-detail {
+  position: fixed;
+  width: 200px;
+  background: #1e1b2e;
+  border: 1px solid #3d3560;
+  border-radius: 10px;
+  padding: 10px;
+  color: #eae6ff;
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  z-index: 2147483003;
+}
+.wa-lb-detail-row { margin-top: 4px; color: #c9c3e6; }
+.wa-lb-detail-text { margin-top: 6px; font-weight: 600; color: #eae6ff; }
+.wa-lb-detail-close {
+  float: right;
+  background: none;
+  border: none;
+  color: #c9c3e6;
+  cursor: pointer;
+  font-size: 12px;
+}
+.wa-lb-detail-open {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px;
+  border: none;
+  border-radius: 6px;
+  background: #7c3aed;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.wa-lb-detail-open:hover { background: #8b4ff0; }
+
+/* Bară de unelte orizontală — atârnă sub banda permanentă, se deschide/închide */
+#wa-toolbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+  background: #1e1b2e;
+  border: none;
+  border-bottom: 1px solid #3d3560;
+  border-radius: 0;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  z-index: 2147483001; /* peste #wa-root, altfel layer-ul de desen fură click-urile când o unealtă e activă */
+}
+#wa-toolbar[hidden] { display: none; }
+
+#wa-toolbar .wa-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+#wa-toolbar button.wa-tool {
+  flex: 0 0 auto;
+  min-width: 38px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: #2a2545;
+  color: #eae6ff;
+  cursor: pointer;
+  font-size: 16px;
+}
+#wa-toolbar button.wa-tool:hover { background: #362e5c; }
+#wa-toolbar button.wa-tool.active {
+  background: #7c3aed;
+  border-color: #a78bfa;
+}
+
+#wa-toolbar label {
+  color: #c9c3e6;
+  font-size: 11px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+#wa-toolbar input[type="color"] {
+  width: 30px;
+  height: 26px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+#wa-toolbar input[type="range"] { width: 80px; }
+#wa-toolbar input[type="number"] { width: 56px; }
+
+#wa-toolbar select {
+  padding: 4px;
+  border-radius: 6px;
+  background: #2a2545;
+  color: #eae6ff;
+  border: 1px solid #3d3560;
+}
+
+#wa-toolbar hr {
+  border: none;
+  border-left: 1px solid #3d3560;
+  width: 0;
+  align-self: stretch;
+  margin: 0;
+}
+
+#wa-toolbar .wa-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #c9c3e6;
+  cursor: pointer;
+  font-size: 14px;
+  flex: 0 0 auto;
+}
+
+/* Control de vot atașat lângă fiecare adnotare — ascuns implicit, apare doar la
+   hover pe adnotare (sau pe el însuși, cât timp muți mouse-ul spre el). Pe pagină
+   rămâne vizibil doar desenul/textul, fără să fie aglomerată de like/dislike/raport. */
+.wa-vote {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(20, 16, 36, 0.85);
+  border-radius: 8px;
+  padding: 2px 4px;
+  font-size: 11px;
+  color: white;
+  opacity: 0;
+  transition: opacity 0.12s;
+  transform: translate(-4px, -100%);
+  white-space: nowrap;
+}
+/* Selector cu #wa-elements-layer (nu doar .wa-vote) — altfel regula generică
+   "#wa-elements-layer > * { pointer-events: auto }" de mai sus, fiind mai specifică
+   (are un ID), ar câștiga și ar lăsa controlul clickabil chiar și cât e invizibil. */
+#wa-elements-layer > .wa-vote {
+  pointer-events: none;
+}
+#wa-elements-layer > .wa-vote.wa-visible-hover {
+  pointer-events: auto;
+  opacity: 1;
+}
+.wa-vote button {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 1px 2px;
+}
+.wa-vote .wa-count { min-width: 14px; text-align: center; }
+
+/* Mânere de zoom/rotire — un cerc mic lipit exact de colțul adnotării. Ascunse implicit,
+   apar în același grup cu controlul de vot (vezi wireHoverReveal din JS). Poziționate cu
+   translate(-50%,-50%) ca centrul cercului să cadă exact pe punctul (left/top) calculat,
+   adică chiar pe colțul dreapta-jos / stânga-jos al adnotării. */
+.wa-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(20, 16, 36, 0.85);
+  color: white;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.12s;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+  user-select: none;
+  z-index: 2147483002;
+}
+/* Vezi comentariul de la #wa-elements-layer > .wa-vote mai sus — aceeași nevoie de
+   specificitate ca să bată regula generică "auto" de pe elements-layer. */
+#wa-elements-layer > .wa-handle {
+  pointer-events: none;
+}
+#wa-elements-layer > .wa-handle.wa-visible-hover {
+  pointer-events: auto;
+  opacity: 1;
+}
+.wa-handle-resize { cursor: nwse-resize; }
+.wa-handle-rotate { cursor: grab; }
+.wa-handle-rotate:active { cursor: grabbing; }
+
+/* Text box */
+.wa-text-box {
+  position: absolute;
+  min-width: 80px;
+  min-height: 30px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid #7c3aed;
+  color: #1a1a1a;
+  font-size: 14px;
+  resize: both;
+  overflow: auto;
+}
+.wa-text-box[contenteditable="true"] {
+  outline: 2px dashed #ec4899;
+}
+
+/* Bulă cu text (click direct) */
+.wa-bubble {
+  position: absolute;
+  max-width: 240px;
+  min-width: 60px;
+  min-height: 24px;
+  padding: 8px 12px;
+  border-radius: 16px;
+  border-bottom-left-radius: 2px; /* sugerează coada bulei */
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.wa-bubble[contenteditable="true"] {
+  outline: 2px dashed white;
+  min-width: 120px;
+}
+
+/* Link către alt conținut */
+.wa-link-badge {
+  position: absolute;
+  display: inline-block;
+  max-width: 220px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(20, 16, 36, 0.92);
+  border: 1px solid;
+  color: #93c5fd;
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wa-link-badge:hover { text-decoration: underline; }
+
+/* Adnotări proprii — pot fi mutate prin drag; alți useri văd cursorul normal */
+.wa-owned {
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+.wa-owned:hover { outline: 2px solid rgba(255, 255, 255, 0.5); outline-offset: 2px; }
+
+/* Bulă video */
+.wa-video-bubble {
+  position: absolute;
+  max-width: 220px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(124, 58, 237, 0.92);
+  color: white;
+  font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  display: none;
+}
+.wa-video-bubble.wa-visible { display: block; }
+
+/* Form popover pentru bulă video */
+.wa-popover {
+  position: fixed;
+  background: #1e1b2e;
+  border: 1px solid #3d3560;
+  border-radius: 10px;
+  padding: 10px;
+  color: #eae6ff;
+  font-size: 12px;
+  width: 220px;
+  pointer-events: auto;
+  z-index: 2147483001;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wa-popover textarea,
+.wa-popover input {
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid #3d3560;
+  background: #14102a;
+  color: #eae6ff;
+  padding: 4px 6px;
+}
+.wa-popover .wa-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.wa-popover button {
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.wa-popover .wa-submit { background: #7c3aed; color: white; }
+.wa-popover .wa-cancel { background: #362e5c; color: #eae6ff; }
+
+/* Bară de confirmare pentru o sesiune de spray deschisă (poți da spray de mai multe ori) */
+.wa-spray-confirm {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1e1b2e;
+  border: 1px solid #3d3560;
+  border-radius: 999px;
+  padding: 8px 10px 8px 16px;
+  color: #eae6ff;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  z-index: 2147483003; /* peste orice altceva, inclusiv topbar */
+}
+.wa-spray-confirm button {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.wa-spray-confirm .wa-spray-ok { background: #22c55e; color: #0b1a0f; }
+.wa-spray-confirm .wa-spray-cancel { background: #362e5c; color: #eae6ff; }

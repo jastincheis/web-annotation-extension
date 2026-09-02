@@ -1,0 +1,90 @@
+# Web Annotate — MVP
+
+Extensie Chrome pentru adnotări vizuale (graffiti, bule cu text, comentarii) pe orice
+pagină web sau video, cu salvare/partajare publică prin backend propriu, votare și
+raportare. Construit după specificația din `Web Chrome Extension.odt`.
+
+**Ce NU e inclus în acest MVP** (rămâne pentru o fază ulterioară, dacă vrei):
+NFT-uri, wallet/ENS, blockchain, marketplace, login Gmail + reCAPTCHA, moderare AI.
+Momentan oricine poate crea/vota/raporta anonim (id local generat automat).
+
+## Structură
+
+```
+web-annotation-extension/
+  extension/     — extensia Chrome (Manifest V3)
+  server/        — backend Node.js + Express + SQLite (node:sqlite, nativ)
+```
+
+## 1. Pornește backend-ul
+
+```bash
+cd server
+npm install      # deja rulat; repetă doar dacă ștergi node_modules
+npm start
+```
+
+Ascultă implicit pe `http://localhost:4000`. Baza de date (`annotations.db`) se
+creează automat lângă `server.js`, folosind modulul nativ `node:sqlite` — nu are
+nevoie de compilare (necesită Node ≥ 22.5).
+
+Endpoint-uri disponibile:
+- `GET /api/annotations?url=<url>` — listă adnotări pentru o pagină
+- `POST /api/annotations` — creează `{url, type, data, authorId}`
+- `POST /api/annotations/:id/vote` — `{voterId, direction: "up"|"down"}`
+- `POST /api/annotations/:id/report` — `{reporterId}` (auto-ascundere la 5 raportări)
+- `DELETE /api/annotations/:id` — `{authorId}` (doar autorul își poate șterge propria adnotare)
+
+## 2. Încarcă extensia în Chrome
+
+1. Deschide `chrome://extensions`
+2. Activează **Developer mode** (colț dreapta sus)
+3. **Load unpacked** → selectează folderul `extension/`
+4. Iconița 🖍️ apare în bara de extensii
+
+## 3. Folosire
+
+- Click pe iconița extensiei → **„Arată / ascunde bara de unelte”** → apare toolbar-ul
+  în stânga paginii curente.
+- **Pen** — desen liber. **Spray** — graffiti (puncte împrăștiate). **Formă** — bulă /
+  cerc / săgeată (click-drag). **Text** — click pe pagină, scrie, apoi click în afară
+  ca să salvezi. **🎬 Video** — dacă pagina are un `<video>`, deschide un formular pentru
+  o bulă cu text la o secundă/durată specifice.
+- Fiecare adnotare are lângă ea 👍 👎 🚩 (like/dislike/raportează); autorul vede și 🗑.
+- „Arată doar peste X voturi” filtrează ce se vede pe pagină.
+- **🏆 Top** deschide un clasament lateral cu cele mai votate adnotări de pe pagina curentă.
+- Adnotările sunt publice: oricine cu extensia instalată și configurată spre același
+  server le vede pe același URL (`origin + pathname + querystring`).
+
+Dacă rulezi backend-ul pe altă mașină/port, schimbă adresa din popup („Adresă server”)
+și reîncarcă pagina.
+
+## Deploy pe Railway (backend public, cu HTTPS)
+
+1. `railway.com` → cont nou → **New Project** → **Deploy from GitHub repo** (repo-ul ăsta
+   trebuie întâi pus pe GitHub) — sau, fără GitHub, `railway up` din CLI, rulat în `server/`.
+2. Dacă deploy-ul e din repo-ul întreg (nu doar `server/`), setează **Root Directory** =
+   `server` în setările serviciului, ca Railway să nu încerce să pornească extensia.
+3. **Volume persistent** — obligatoriu, altfel baza de date dispare la fiecare redeploy:
+   Settings → Volumes → Add Volume, montează-l la `/data`.
+4. **Variabile de mediu** (Settings → Variables):
+   - `DB_PATH` = `/data/annotations.db`
+   - `PORT` — Railway o setează singur, serverul o citește deja (`process.env.PORT`).
+5. După deploy, Railway dă un URL public (`https://ceva.up.railway.app`) — pune-l în
+   popup-ul extensiei, la „Adresă server" (fiecare utilizator își face asta o dată).
+
+## Limitări cunoscute (MVP)
+
+- Bulele video se atașează la **primul** `<video>` găsit pe pagină, poziționate fix
+  (fără drag după creare).
+- Fără autentificare reală — id-ul de autor/votant e generat local per profil de Chrome.
+- Fără moderare AI pentru limbaj; doar prag simplu de raportări (5) care ascunde adnotarea.
+- Fără persistență/backup automat al `annotations.db` — e un fișier SQLite local.
+
+## Următorii pași posibili
+
+1. Deploy backend pe AWS/DigitalOcean (schimbă doar adresa din popup).
+2. Login Gmail + reCAPTCHA înainte de a permite creare/vot.
+3. Endpoint `PATCH` pentru repoziționarea adnotărilor după creare.
+4. NFT-urile și integrarea blockchain, ca fază separată — cer decizii de arhitectură
+   proprii (wallet custodial vs. non-custodial, ce chain, cine plătește gas).
