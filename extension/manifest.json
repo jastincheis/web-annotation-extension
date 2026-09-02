@@ -3,7 +3,7 @@
   "name": "Adormis",
   "version": "0.1.1",
   "description": "Adaugă graffiti, bule cu text și comentarii pe orice pagină web sau video.",
-  "permissions": ["storage", "activeTab", "scripting", "alarms"],
+  "permissions": ["storage", "activeTab", "alarms"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "background.js"
