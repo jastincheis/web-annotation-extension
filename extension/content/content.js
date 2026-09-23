@@ -12,6 +12,8 @@
     color: "#89CFF0", // baby blue
     strokeWidth: 4,
     minVotes: 0,
+    myPanelOpen: false, // panoul "Ale mele" — cât e deschis, adnotările proprii sunt forțat vizibile
+    annotationsLoaded: false, // devine true după ce loadExisting() termină prima cerere către server — vezi renderMineList
     annotations: new Map(), // id -> { ann, el, refEl }
     globalTop: [], // top 10 de pe TOATE paginile (nu doar cea curentă) — vezi refreshGlobalTop
   };
@@ -42,12 +44,26 @@
 
   // ---------- Layout ----------
 
+  // #wa-root e "position: absolute", copil DIRECT al <html> — propria lui înălțime
+  // (setată tot de funcția asta, via sizeLayers) intră în calculul lui
+  // document.documentElement.scrollHeight, care e citit AICI ca să calculeze
+  // înălțimea următoare: o buclă de auto-alimentare care doar crește (Math.max),
+  // niciodată nu scade. Pe o pagină cu activitate DOM normală (orice site — și
+  // MutationObserver-ul de mai jos recalculează la fiecare mutație), înălțimea
+  // explodează în câteva interacțiuni la sute de mii de pixeli — bug confirmat
+  // live: 10 464px conținut real -> 138 080px după un singur test cu o bulă.
+  // Măsurăm cu #wa-root scos temporar din calcul (height: 0), ca
+  // documentElement.scrollHeight să reflecte DOAR conținutul real al paginii.
   function docHeight() {
-    return Math.max(
+    const prevHeight = els.root.style.height;
+    els.root.style.height = "0px";
+    const h = Math.max(
       document.body.scrollHeight,
       document.documentElement.scrollHeight,
       window.innerHeight
     );
+    els.root.style.height = prevHeight;
+    return h;
   }
 
   function sizeLayers() {
@@ -64,24 +80,41 @@
     els.svg = svgEl("svg", { id: "wa-svg-layer" });
     els.elements = el("div", { id: "wa-elements-layer" });
 
+    // Strat "geamăn", separat de #wa-root: găzduiește DOAR adnotările legate de
+    // video (videoRange) cât timp video-ul e în Fullscreen API real. Fullscreen-ul
+    // randează DOAR subarborele elementului aflat în fullscreen — #wa-root, fiind
+    // frate cu <html>, devine complet invizibil altfel. Vezi enterVideoFullscreen/
+    // exitVideoFullscreen mai jos, unde stratul ăsta e mutat efectiv în interiorul
+    // lui document.fullscreenElement cât ține fullscreen-ul, și înapoi la ieșire.
+    els.videoRoot = el("div", { id: "wa-video-root" });
+    els.videoSvg = svgEl("svg", { id: "wa-video-svg-layer" });
+    els.videoElements = el("div", { id: "wa-video-elements-layer" });
+    els.videoRoot.appendChild(els.videoSvg);
+    els.videoRoot.appendChild(els.videoElements);
+
     els.topbar = buildTopbar();
     els.toolbar = buildToolbar();
     els.leaderboardPanel = buildLeaderboardPanel();
+    els.minePanel = buildMinePanel();
 
     els.root.appendChild(els.svg);
     els.root.appendChild(els.elements);
     document.documentElement.appendChild(els.root);
+    document.documentElement.appendChild(els.videoRoot);
     document.documentElement.appendChild(els.topbar);
     document.documentElement.appendChild(els.toolbar);
     document.documentElement.appendChild(els.leaderboardPanel);
+    document.documentElement.appendChild(els.minePanel);
 
     sizeLayers();
     positionToolbar();
     positionLeaderboardPanel();
+    positionMinePanel();
     window.addEventListener("resize", () => {
       sizeLayers();
       positionToolbar();
       positionLeaderboardPanel();
+      positionMinePanel();
     });
     // resize/zoom pot rearanja pagina (layout responsive) — recalculăm pozițiile ancorate
     window.addEventListener("resize", debounce(repositionAnchoredAnnotations, 150));
@@ -164,7 +197,16 @@
       { id: "wa-toggle-btn", onclick: toggleToolbar, title: "Deschide/închide uneltele de adnotare" },
       "🖍️ Adnotează"
     );
-    return el("div", { id: "wa-topbar" }, els.toggleBtn);
+    // X explicit — retrage tab-ul (și panoul "Ale mele", care acum se deschide automat
+    // odată cu tab-ul — vezi mai jos) INSTANT, la cerere. Nu mai depinde deloc de
+    // mouseleave + timer, ca să existe mereu o cale simplă, sigură, "apeși și se
+    // închide", indiferent ce altceva se întâmplă cu hover-ul.
+    els.topbarCloseBtn = el(
+      "button",
+      { id: "wa-topbar-close", onclick: closeTopbarNow, title: "Retrage extensia în stânga" },
+      "✕"
+    );
+    return el("div", { id: "wa-topbar" }, els.topbarCloseBtn, els.toggleBtn);
   }
 
   // Panou permanent — doar 10 bile statice, lipite de marginea din dreapta, TOP GLOBAL
@@ -182,19 +224,55 @@
     return el("div", { id: "wa-leaderboard-panel" }, ...slots);
   }
 
-  // Bara de unelte atârnă chiar sub banda permanentă, indiferent dacă e deschisă sau nu.
-  function positionToolbar() {
-    const h = els.topbar.getBoundingClientRect().height;
-    els.toolbar.style.top = h + "px";
+  // Panou lateral, ascuns implicit — se deschide AUTOMAT odată cu tab-ul (nu mai
+  // există un buton separat "Ale mele" de apăsat): hover pe tab = apar direct
+  // adnotările tale, cu tip/minut/voturi, fără niciun click intermediar. Se închide
+  // fie prin ✕-ul propriu, fie prin ✕-ul tab-ului (closeTopbarNow), fie automat când
+  // se retrage tab-ul. Lista se umple în renderMineList(); aici doar construim
+  // scheletul static.
+  function buildMinePanel() {
+    els.mineList = el("div", { id: "wa-mine-list" });
+    return el(
+      "div",
+      { id: "wa-mine-panel", hidden: "true" },
+      el(
+        "div",
+        { class: "wa-mine-header" },
+        el("span", {}, "📍 Adnotările mele pe pagina asta"),
+        el("button", { class: "wa-mine-close", onclick: closeTopbarNow }, "✕")
+      ),
+      els.mineList
+    );
   }
 
-  // Panoul de Top stă mereu sub tot ce e deasupra lui — banda permanentă, și bara de
-  // unelte pe deasupra ei, dacă e deschisă. Recalculat la fiecare deschidere/închidere
-  // a bării, nu doar o dată la pornire, altfel s-ar suprapune peste ea cât e deschisă.
+  // #wa-topbar e o pastilă flotantă independentă (poate sta oriunde pe ecran — vezi
+  // CSS), NU mai e punctul de ancorare pentru restul. Bara de unelte și panourile
+  // rămân agățate sus în pagină, la un offset fix, indiferent unde plutește pastila —
+  // altfel, cu pastila la mijlocul ecranului, panourile ar porni tot de la mijloc și
+  // ar risca să iasă din ecran jos (panoul de clasament întins pe 60vh, de ex.).
+  const TOP_GAP = 16;
+
+  function positionToolbar() {
+    els.toolbar.style.top = TOP_GAP + "px";
+  }
+
+  // Panoul de Top stă sub bara de unelte dacă e deschisă, altfel direct sus în
+  // pagină. Recalculat la fiecare deschidere/închidere a bării, nu doar o dată la
+  // pornire, altfel s-ar suprapune peste ea cât e deschisă.
   function positionLeaderboardPanel() {
-    const topbarH = els.topbar.getBoundingClientRect().height;
-    const toolbarH = els.toolbar.getBoundingClientRect().height; // 0 cât timp bara e ascunsă
-    els.leaderboardPanel.style.top = topbarH + toolbarH + 8 + "px";
+    const anchor = state.toolbarVisible ? els.toolbar.getBoundingClientRect().bottom + 8 : TOP_GAP;
+    els.leaderboardPanel.style.top = anchor + "px";
+  }
+
+  // Panoul "Ale mele" stă simetric, lipit de marginea din stânga — aceeași logică de
+  // poziționare ca panoul de clasament din dreapta.
+  // Panoul apare acum LIPIT de tab (nu sus în pagină) — se deschide automat odată cu
+  // el, deci vizual trebuie să pară o singură bucată: aceeași centrare verticală,
+  // chiar la marginea din dreapta a tab-ului.
+  function positionMinePanel() {
+    const r = els.topbar.getBoundingClientRect();
+    els.minePanel.style.left = r.right + 6 + "px";
+    els.minePanel.style.top = (r.top + r.bottom) / 2 + "px";
   }
 
   function toggleToolbar(forceShow) {
@@ -203,6 +281,76 @@
     els.toggleBtn?.classList.toggle("active", state.toolbarVisible);
     if (!state.toolbarVisible) setActiveTool(null);
     positionLeaderboardPanel();
+    positionMinePanel();
+    refreshTopbarVisibility();
+  }
+
+  // Tab-ul de sus e aproape tot ascuns implicit (vezi CSS #wa-topbar) — deschiderea
+  // se face setând `transform` direct pe `style` (nu printr-o clasă + regulă în
+  // foaia de stil a extensiei) ca să fie garantat: un stil inline câștigă mereu în
+  // fața oricărei reguli externe, indiferent de specificitate sau de cache. Golirea
+  // lui (style.transform = "") revine automat la regula CSS de bază (retras).
+  // Același model ca wireHoverReveal() (controalele de vot): apare INSTANT la
+  // mouseenter, dispare cu un mic delay la mouseleave. "Deschis" înseamnă: mouse-ul
+  // chiar stă pe tab ACUM, SAU bara de unelte e deschisă (caz în care rămâne vizibil
+  // oricât, fără timer, altfel s-ar retrage sub mouse chiar cât desenezi).
+  // Panoul "Ale mele" nu mai are buton propriu — se deschide/închide AUTOMAT, exact
+  // odată cu tab-ul (vezi setMinePanelOpen mai jos), ca să nu mai fie nevoie de un
+  // click în plus ca să-ți vezi adnotările.
+  let topbarHoverActive = false;
+  let topbarHideTimer = null;
+  const TOPBAR_HIDE_DELAY_MS = 1400;
+  const TOPBAR_OPEN_TRANSFORM = "translateY(-50%) translateX(0)";
+
+  function refreshTopbarVisibility() {
+    if (!els.topbar) return;
+    const shouldStayOpen = topbarHoverActive || state.toolbarVisible;
+    if (topbarHideTimer) {
+      clearTimeout(topbarHideTimer);
+      topbarHideTimer = null;
+    }
+    if (shouldStayOpen) {
+      // Deschiderea trebuie să fie INSTANT (fără tranziția din CSS) — altfel un click
+      // dat imediat după ce mouse-ul ajunge pe tab poate rata ținta: elementul încă se
+      // mișcă spre poziția finală (0.22s), click-ul ajunge unde va fi el, nu unde e
+      // ACUM. Exact motivul pentru care primul click pe lista de adnotări părea să nu
+      // facă nimic, iar al doilea (după ce animația se terminase deja) mergea.
+      els.topbar.style.transition = "none";
+      els.topbar.style.transform = TOPBAR_OPEN_TRANSFORM;
+      setMinePanelOpen(true);
+    } else {
+      topbarHideTimer = setTimeout(() => {
+        els.topbar.style.transition = ""; // revine la tranziția lină din CSS pentru retragere
+        els.topbar.style.transform = "";
+        setMinePanelOpen(false);
+        topbarHideTimer = null;
+      }, TOPBAR_HIDE_DELAY_MS);
+    }
+  }
+
+  // Butonul ✕ din tab (sau cel din panoul "Ale mele" — fac același lucru) — retrage
+  // INSTANT, fără să mai aștepte delay-ul de hover. Închide și bara de unelte dacă
+  // era deschisă (altfel ar ține tab-ul deschis din nou, chiar după ce ai apăsat ✕).
+  function closeTopbarNow() {
+    topbarHoverActive = false;
+    if (state.toolbarVisible) toggleToolbar(false);
+    if (topbarHideTimer) {
+      clearTimeout(topbarHideTimer);
+      topbarHideTimer = null;
+    }
+    els.topbar.style.transform = "";
+    setMinePanelOpen(false);
+  }
+
+  function wireTopbarReveal() {
+    els.topbar.addEventListener("mouseenter", () => {
+      topbarHoverActive = true;
+      refreshTopbarVisibility();
+    });
+    els.topbar.addEventListener("mouseleave", () => {
+      topbarHoverActive = false;
+      refreshTopbarVisibility();
+    });
   }
 
   function setActiveTool(tool) {
@@ -277,6 +425,22 @@
     ["keydown", "keyup", "keypress"].forEach((type) => {
       node.addEventListener(type, (e) => e.stopPropagation());
     });
+  }
+
+  // Dacă serverul nu răspunde (oprit, fără rețea etc.), creare/editare eșuează silențios
+  // altfel — desenul dispare de pe pagină fără nicio explicație. Un singur banner, refolosit
+  // pentru toate uneltele, ca utilizatorul să știe DE CE a dispărut, nu doar CĂ a dispărut.
+  let saveErrorToast = null;
+  let saveErrorTimer = null;
+  function showSaveError(message) {
+    clearTimeout(saveErrorTimer);
+    if (!saveErrorToast) {
+      saveErrorToast = el("div", { class: "wa-save-error" });
+      document.documentElement.appendChild(saveErrorToast);
+    }
+    saveErrorToast.textContent = `⚠️ ${message}`;
+    saveErrorToast.classList.add("wa-visible");
+    saveErrorTimer = setTimeout(() => saveErrorToast?.classList.remove("wa-visible"), 5000);
   }
 
   // Autorul poate re-edita textul unei adnotări (dublu-click) — funcționează pentru text/bulă.
@@ -597,18 +761,43 @@
     if (!entry) return;
     entry.ann.votes = votes;
     if (entry.control) entry.control.querySelector(".wa-count").textContent = String(votes);
-    applyVoteFilterOne(entry);
+    applyVisibility(entry);
     refreshGlobalTop(); // un vot poate schimba și clasamentul GLOBAL, nu doar cel local
   }
 
-  function applyVoteFilterOne(entry) {
-    const hide = entry.ann.votes < state.minVotes;
-    if (entry.el) entry.el.style.display = hide ? "none" : "";
-    if (entry.control) entry.control.style.display = hide ? "none" : "";
+  // Decide dacă o adnotare stă ascunsă (filtru de voturi / în afara intervalului video)
+  // sau vizibilă. Excepție: cât timp panoul "Ale mele" e deschis, propriile adnotări
+  // ignoră ambele filtre — exact ca să le poți găsi chiar dacă n-au voturi sau nu e
+  // momentul potrivit din video. Centralizat aici (nu în două locuri separate) ca cele
+  // două filtre să nu se calce unul pe altul, scriind amândouă în același style.display.
+  function applyVisibility(entry) {
+    const isMine = entry.ann.authorId === state.userId;
+    const forced = state.myPanelOpen && isMine;
+
+    let hidden = false;
+    if (!forced) {
+      if (entry.ann.votes < state.minVotes) hidden = true;
+      const range = entry.ann.data?.videoRange;
+      if (range) {
+        const video = getMainVideo();
+        const t = video ? video.currentTime : 0;
+        if (t < range.start || t > range.end) hidden = true;
+      }
+    }
+
+    if (entry.el) entry.el.style.display = hidden ? "none" : "";
+    if (entry.control) entry.control.style.display = hidden ? "none" : "";
   }
 
   function applyVoteFilter() {
-    state.annotations.forEach(applyVoteFilterOne);
+    state.annotations.forEach(applyVisibility);
+  }
+
+  // Reaplică filtrele pe TOATE adnotările deodată — necesar la deschiderea/închiderea
+  // panoului "Ale mele", care schimbă condiția de forțare pentru mai multe dintre ele
+  // simultan (nu doar una, ca la un vot).
+  function refreshVisibility() {
+    state.annotations.forEach(applyVisibility);
   }
 
   function removeAnnotation(id) {
@@ -618,11 +807,12 @@
     entry.control?.remove();
     state.annotations.delete(id);
     renderSidebar();
+    if (state.myPanelOpen) renderMineList();
   }
 
   function registerAnnotation(ann, domEl, control) {
     state.annotations.set(ann.id, { ann, el: domEl, control });
-    applyVoteFilterOne(state.annotations.get(ann.id));
+    applyVisibility(state.annotations.get(ann.id));
     wireVideoRange(ann, domEl, control);
     const handles = attachTransformHandles(ann, domEl); // null dacă nu ești autorul
     const reveal = wireHoverReveal(domEl, [control, handles?.resizeHandle, handles?.rotateHandle], {
@@ -631,6 +821,7 @@
     });
     if (handles) wireHandleDragging(ann, domEl, handles, reveal);
     renderSidebar(); // clasamentul e mereu la zi, fără acțiune manuală
+    if (state.myPanelOpen) renderMineList(); // panoul "Ale mele" prinde imediat noua adnotare
   }
 
   // Aplică translate (poziție, din drag/ancoră) + rotate + scale pe un element SVG
@@ -811,20 +1002,195 @@
   // Legăm ascultătorul chiar dacă adnotarea NU are încă interval — dacă i se
   // adaugă unul mai târziu (dublu-click, pentru orice e peste video), prinde
   // efectul imediat, fără reload. Fără interval, rămâne mereu vizibilă.
+  // Adnotări cu videoRange care n-au găsit niciun <video> la înregistrare — pe
+  // site-uri SPA grele (YouTube), player-ul își construiește <video>-ul asincron,
+  // DUPĂ ce loadExisting() a apucat deja să încerce legarea. Fără reîncercare, o
+  // asemenea adnotare rămânea "înghețată" ascunsă (applyVisibility vede video=null,
+  // deci t=0 < range.start) tot restul sesiunii paginii — nicio interacțiune
+  // ulterioară n-o mai putea readuce la viață, nici măcar deschiderea "Ale mele".
+  const pendingVideoWire = [];
+
   function wireVideoRange(ann, domEl, control) {
     const video = getMainVideo();
-    if (!video) return; // fără video pe pagină
+    if (!video) {
+      pendingVideoWire.push({ ann, domEl, control });
+      return;
+    }
 
+    // Doar reaplică vizibilitatea centralizată (applyVisibility) la fiecare tick de
+    // redare — ea citește ann.data.videoRange DIN NOU de fiecare dată (nu memorat o
+    // dată), deci o editare ulterioară a secundelor (dublu-click) are efect imediat,
+    // fără reload, și respectă și forțarea din panoul "Ale mele".
     function update() {
-      // citim ann.data.videoRange DIN NOU la fiecare tick (nu memorat o dată) — ca editarea
-      // ulterioară a secundelor (dublu-click) să aibă efect imediat, fără reload.
-      const range = ann.data.videoRange;
-      const visible = !range || (video.currentTime >= range.start && video.currentTime <= range.end);
-      domEl.style.display = visible ? "" : "none";
-      if (control) control.style.display = visible ? "" : "none";
+      const entry = state.annotations.get(ann.id);
+      if (entry) applyVisibility(entry);
     }
     video.addEventListener("timeupdate", update);
     update();
+  }
+
+  // O singură dată pentru toată pagina: dacă apare un <video> nou (player SPA
+  // construit cu întârziere), reîncearcă legarea pentru tot ce aștepta. Rămâne activ
+  // pe toată durata paginii (nu doar la prima reușită) — aceeași cursă se poate
+  // repeta la fiecare navigare SPA (schimbare de video pe YouTube), care golește și
+  // reumple state.annotations prin onPageNavigated(). Verificarea e ieftină
+  // (`length` întâi) — nu costă nimic cât timp nu așteaptă nimic.
+  new MutationObserver(() => {
+    watchVideoResize(); // dacă <video>-ul s-a schimbat/a apărut, prindem imediat mărimea lui reală
+    if (!pendingVideoWire.length || !getMainVideo()) return;
+    pendingVideoWire.splice(0).forEach(({ ann, domEl, control }) => wireVideoRange(ann, domEl, control));
+  }).observe(document.documentElement, { childList: true, subtree: true });
+
+  // Repoziționarea ancorată (repositionAnchoredAnnotations) se baza DOAR pe
+  // window.resize — dar dimensiunea/poziția video-ului se poate schimba fără ca
+  // fereastra browserului să-și schimbe dimensiunea deloc: theatru mode, fullscreen
+  // "fals" prin CSS (nu Fullscreen API), un layout responsiv al site-ului declanșat
+  // de altceva decât un resize de fereastră (motivul cel mai probabil pentru care o
+  // adnotare peste video apărea doar în anumite moduri de vizualizare, nu în altele).
+  // ResizeObserver urmărește direct dreptunghiul REAL al <video>-ului, indiferent
+  // de ce l-a schimbat.
+  let videoResizeObserver = null;
+  let observedVideo = null;
+  function watchVideoResize() {
+    const video = getMainVideo();
+    if (video === observedVideo) return; // deja urmărim exact acest element
+    videoResizeObserver?.disconnect();
+    observedVideo = video;
+    if (!video) return;
+    videoResizeObserver = new ResizeObserver(
+      debounce(() => {
+        if (!els.root) return; // overlay-ul nu s-a construit încă (init() încă rulează)
+        repositionAnchoredAnnotations();
+        repositionVideoLayerAnnotations();
+        sizeLayers();
+      }, 100)
+    );
+    videoResizeObserver.observe(video);
+  }
+  watchVideoResize();
+  // Fullscreen (Fullscreen API reală) e un caz special, în două privințe:
+  // 1) dreptunghiul video-ului se poate schimba fără ca elementul să-și schimbe
+  //    efectiv width/height CSS în același tick — un declanșator explicit aici, în
+  //    plus față de ResizeObserver, nu strică.
+  // 2) fullscreen-ul randează DOAR subarborele elementului aflat în fullscreen —
+  //    #wa-root (frate cu <html>) devine complet invizibil, adnotare pe video sau
+  //    nu. enterVideoFullscreen/exitVideoFullscreen (mai jos) mută DOAR adnotările
+  //    legate de video (videoRange) într-un strat-geamăn, înăuntrul lui
+  //    document.fullscreenElement, cât ține fullscreen-ul — cele statice rămân
+  //    invizibile ca înainte (locateMine iese explicit din fullscreen pentru ele).
+  document.addEventListener("fullscreenchange", () => {
+    if (document.fullscreenElement) {
+      enterVideoFullscreen();
+    } else {
+      exitVideoFullscreen();
+    }
+    setTimeout(() => {
+      if (!els.root) return;
+      repositionAnchoredAnnotations();
+      repositionVideoLayerAnnotations();
+      sizeLayers();
+    }, 100);
+  });
+
+  // Adevărat doar dacă elementul aflat efectiv în fullscreen conține video-ul
+  // principal — și NU e chiar tag-ul <video> (un <video> nu-și randează copiii DOM
+  // arbitrari ca overlay, deci n-avem cum să-i suprapunem ceva vizibil; site-urile
+  // care fac fullscreen pe <video> direct, nu pe un container-wrapper, rămân cu
+  // limitarea veche: bula nu se vede cât ești fullscreen, doar seek-ul pe video).
+  function isFullscreenOverVideo() {
+    const video = getMainVideo();
+    const fsEl = document.fullscreenElement;
+    if (!video || !fsEl || fsEl === video) return false;
+    return fsEl.contains(video);
+  }
+
+  let videoLayerActive = false;
+  // {domEl, domParent, domNext, control, controlParent, controlNext}[] — ca să
+  // restaurăm exact locul din DOM al fiecărui element mutat, la ieșirea din fullscreen.
+  const movedIntoVideoLayer = [];
+
+  function enterVideoFullscreen() {
+    if (videoLayerActive || !isFullscreenOverVideo()) return;
+
+    state.annotations.forEach((entry) => {
+      if (!entry.ann.data?.videoRange || !entry.el) return; // doar adnotările legate de video
+      const targetLayer = entry.el instanceof SVGElement ? els.videoSvg : els.videoElements;
+      movedIntoVideoLayer.push({
+        domEl: entry.el,
+        domParent: entry.el.parentNode,
+        domNext: entry.el.nextSibling,
+        control: entry.control || null,
+        controlParent: entry.control ? entry.control.parentNode : null,
+        controlNext: entry.control ? entry.control.nextSibling : null,
+      });
+      targetLayer.appendChild(entry.el);
+      if (entry.control) els.videoElements.appendChild(entry.control);
+    });
+
+    document.fullscreenElement.appendChild(els.videoRoot);
+    els.videoRoot.classList.add("wa-active");
+    videoLayerActive = true;
+    repositionVideoLayerAnnotations();
+  }
+
+  function exitVideoFullscreen() {
+    if (!videoLayerActive) return;
+    movedIntoVideoLayer.splice(0).forEach(({ domEl, domParent, domNext, control, controlParent, controlNext }) => {
+      domParent.insertBefore(domEl, domNext);
+      if (control && controlParent) controlParent.insertBefore(control, controlNext);
+    });
+    els.videoRoot.classList.remove("wa-active");
+    document.documentElement.appendChild(els.videoRoot);
+    videoLayerActive = false;
+    repositionAnchoredAnnotations(); // înapoi la coordonate normale, relative la document
+  }
+
+  // Poziționează (viewport-relative, fiindcă #wa-video-root e "position: fixed")
+  // adnotările mutate în stratul de fullscreen. Nu atinge ann.data.dx/dy/x/y — alea
+  // rămân coordonatele REALE, relative la document, pentru afișarea normală de după
+  // ieșirea din fullscreen; aici calculăm doar o poziție de afișare temporară.
+  function repositionVideoLayerAnnotations() {
+    if (!videoLayerActive) return;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+
+    state.annotations.forEach((entry) => {
+      const ann = entry.ann;
+      if (!ann.data?.videoRange || !ann.data.anchor || !entry.el) return;
+      const resolved = resolveAnchor(ann.data.anchor); // document-relative, ca de obicei
+      if (!resolved) return;
+
+      const isSvg = entry.el instanceof SVGElement;
+      if (isSvg) {
+        const origin = svgOriginPoint(ann);
+        if (!origin) return;
+        const dx = resolved.x - scrollX - origin.x;
+        const dy = resolved.y - scrollY - origin.y;
+        const rotate = ann.data.rotate || 0;
+        const scale = ann.data.scale || 1;
+        entry.el.style.transform = `translate(${dx}px, ${dy}px) rotate(${rotate}deg) scale(${scale})`;
+        if (entry.control) {
+          entry.control.style.left = origin.x + dx + "px";
+          entry.control.style.top = origin.y + dy + "px";
+        }
+      } else {
+        // păstrăm offset-ul curent control<->element (stabilit la creare), în loc
+        // să presupunem unul fix — robust indiferent cum a fost poziționat control-ul.
+        const beforeElLeft = parseFloat(entry.el.style.left) || 0;
+        const beforeElTop = parseFloat(entry.el.style.top) || 0;
+        const offsetX = entry.control ? (parseFloat(entry.control.style.left) || 0) - beforeElLeft : 0;
+        const offsetY = entry.control ? (parseFloat(entry.control.style.top) || 0) - beforeElTop : 0;
+
+        const newLeft = resolved.x - scrollX;
+        const newTop = resolved.y - scrollY;
+        entry.el.style.left = newLeft + "px";
+        entry.el.style.top = newTop + "px";
+        if (entry.control) {
+          entry.control.style.left = newLeft + offsetX + "px";
+          entry.control.style.top = newTop + offsetY + "px";
+        }
+      }
+    });
   }
 
   // ---------- Pen tool ----------
@@ -879,6 +1245,7 @@
           registerAnnotation(ann, path, control);
         } catch (err) {
           console.error("[Adormis] Nu am putut salva desenul:", err);
+          showSaveError("Nu am putut salva desenul — verifică serverul.");
           path.remove();
         }
       }
@@ -901,6 +1268,7 @@
 
     els.svg.addEventListener("pointerdown", (e) => {
       if (state.activeTool !== "pen") return;
+      if (isOverLiveVideo(e.clientX, e.clientY)) return showLiveBlocked();
       drawing = true;
       const { x, y } = pagePoint(e);
       if (!sessionActive) {
@@ -1000,6 +1368,7 @@
           registerAnnotation(ann, group, control);
         } catch (err) {
           console.error("[Adormis] Nu am putut salva spray-ul:", err);
+          showSaveError("Nu am putut salva graffiti-ul — verifică serverul.");
           group.remove();
         }
       }
@@ -1023,6 +1392,7 @@
 
     els.svg.addEventListener("pointerdown", (e) => {
       if (state.activeTool !== "spray") return;
+      if (isOverLiveVideo(e.clientX, e.clientY)) return showLiveBlocked();
       spraying = true;
       if (!sessionActive) {
         sessionActive = true;
@@ -1219,6 +1589,7 @@
         registerAnnotation(ann, preview, control);
       } catch (err) {
         console.error("[Adormis] Nu am putut salva forma:", err);
+        showSaveError("Nu am putut salva forma — verifică serverul.");
         preview?.remove();
       }
       resetState();
@@ -1236,6 +1607,7 @@
 
     els.svg.addEventListener("pointerdown", (e) => {
       if (state.activeTool !== "shape") return;
+      if (isOverLiveVideo(e.clientX, e.clientY)) return showLiveBlocked();
       dragging = true;
       preview?.remove(); // re-tragi -> înlocuiește forma anterioară nesalvată
       start = pagePoint(e);
@@ -1276,6 +1648,7 @@
     els.elements.addEventListener("click", (e) => {
       if (state.activeTool !== "text") return;
       if (e.target.closest(".wa-text-box") || e.target.closest(".wa-vote")) return;
+      if (isOverLiveVideo(e.clientX, e.clientY)) return showLiveBlocked();
       const { x, y } = pagePoint(e);
       createEditableTextBox(x, y, e.clientX, e.clientY);
       setActiveTool(null); // un singur text per activare, apoi revii la select
@@ -1323,6 +1696,7 @@
         renderTextAnnotation(ann);
       } catch (err) {
         console.error("[Adormis] Nu am putut salva textul:", err);
+        showSaveError("Nu am putut salva textul — verifică serverul.");
       }
     };
     confirmBar.querySelector(".wa-spray-cancel").onclick = () => cleanup();
@@ -1351,6 +1725,7 @@
     els.elements.addEventListener("click", (e) => {
       if (state.activeTool !== "bubble") return;
       if (e.target.closest(".wa-bubble") || e.target.closest(".wa-vote")) return;
+      if (isOverLiveVideo(e.clientX, e.clientY)) return showLiveBlocked();
       const { x, y } = pagePoint(e);
       createEditableBubble(x, y, e.clientX, e.clientY);
       setActiveTool(null); // o singură bulă per activare, apoi revii la select
@@ -1398,6 +1773,7 @@
         renderBubbleAnnotation(ann);
       } catch (err) {
         console.error("[Adormis] Nu am putut salva bula:", err);
+        showSaveError("Nu am putut salva bula — verifică serverul.");
       }
     };
     confirmBar.querySelector(".wa-spray-cancel").onclick = () => cleanup();
@@ -1426,6 +1802,7 @@
     els.elements.addEventListener("click", (e) => {
       if (state.activeTool !== "link") return;
       if (e.target.closest(".wa-popover") || e.target.closest(".wa-vote") || e.target.closest(".wa-link-badge")) return;
+      if (isOverLiveVideo(e.clientX, e.clientY)) return showLiveBlocked();
       const { x, y } = pagePoint(e);
       openLinkForm(x, y, e.clientX, e.clientY);
       setActiveTool(null);
@@ -1472,6 +1849,24 @@
       if (!url) return;
       if (!/^https?:\/\//i.test(url)) url = "https://" + url;
       const label = labelInput.value.trim();
+
+      // Verificare URLhaus ÎNAINTE de salvare — dacă link-ul e semnalat, blocăm
+      // și arătăm un avertisment, fără să atingem popover-ul (rămâne deschis, ca
+      // utilizatorul să poată corecta URL-ul sau anula). Fail-open: dacă verificarea
+      // nu a putut rula deloc (server jos, fără cheie configurată), `safe` vine `true`
+      // — nu blocăm postarea unui link doar pentru că paza suplimentară e indisponibilă.
+      const submitBtn = popover.querySelector(".wa-submit");
+      const originalLabel = submitBtn.textContent;
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Se verifică...";
+      const verdict = await WA_Api.checkUrl(url);
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalLabel;
+      if (verdict.checked && !verdict.safe) {
+        showLinkBlockedWarning(url, verdict.threats);
+        return;
+      }
+
       try {
         if (editing) {
           const patch = { url, label };
@@ -1501,6 +1896,7 @@
         }
       } catch (err) {
         console.error("[Adormis] Nu am putut salva link-ul:", err, err?.stack);
+        showSaveError("Nu am putut salva link-ul — verifică serverul.");
       }
       popover.remove();
     };
@@ -1508,6 +1904,39 @@
     document.documentElement.appendChild(popover);
     clampToViewport(popover);
     urlInput.focus();
+  }
+
+  // Pop-up de avertisment când verificarea (URLhaus) semnalează link-ul ca periculos
+  // (vezi checkUrl în api.js + server/routes/check-url.js). Backdrop + card centrat —
+  // mai vizibil decât un toast obișnuit (showSaveError), intenționat, pentru un
+  // avertisment de securitate care merită atenție, nu doar o notă trecătoare.
+  // Etichete pentru codurile de amenințare întoarse de serviciul de verificare
+  // (URLhaus folosește mai ales "malware_download"; restul rămân aici pentru
+  // compatibilitate, dacă se schimbă vreodată furnizorul — vezi server/routes/check-url.js).
+  const THREAT_LABELS = {
+    malware_download: "distribuire de malware",
+    MALWARE: "malware",
+    SOCIAL_ENGINEERING: "phishing / inginerie socială",
+    UNWANTED_SOFTWARE: "software nedorit",
+    POTENTIALLY_HARMFUL_APPLICATION: "aplicație potențial periculoasă",
+  };
+
+  function showLinkBlockedWarning(url, threats) {
+    const threatText = (threats || []).map((t) => THREAT_LABELS[t] || t).join(", ") || "conținut periculos";
+    const backdrop = el("div", { class: "wa-link-warning-backdrop" });
+    const box = el(
+      "div",
+      { class: "wa-link-warning" },
+      el("h3", {}, "⚠️ Link nesigur"),
+      el("p", {}, `Verificarea automată a semnalat acest link ca: ${threatText}.`),
+      el("p", { class: "wa-link-warning-url" }, url),
+      el("button", { onclick: () => backdrop.remove() }, "Am înțeles")
+    );
+    backdrop.appendChild(box);
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) backdrop.remove();
+    });
+    document.documentElement.appendChild(backdrop);
   }
 
   function shortenUrl(url) {
@@ -1521,6 +1950,9 @@
   }
 
   function renderLinkAnnotation(ann) {
+    // Adnotările vin de la server și pot fi trimise de oricine direct la API — nu
+    // afișăm niciodată un link care nu e http(s) (ex. `javascript:...`).
+    if (!/^https?:\/\//i.test(String(ann.data.url))) return;
     const badge = el(
       "a",
       {
@@ -1570,6 +2002,29 @@
 
   function getMainVideo() {
     return document.querySelector("video");
+  }
+
+  // Semnal standard pentru "e live": un video la cerere (VOD) are mereu o durată
+  // finită; un stream live nativ (HLS etc.) raportează Infinity pe <video>.duration.
+  // Cât timp durata încă nu s-a încărcat (NaN), nu tragem nicio concluzie — mai bine
+  // să nu blocăm din greșeală un VOD normal chiar în primele clipe după load.
+  function isLiveVideo(video) {
+    video = video || getMainVideo();
+    return !!video && video.duration === Infinity;
+  }
+
+  // Punctul de ecran (clientX, clientY) cade peste fereastra unui video care e ACUM
+  // live? Folosit ca să blocăm crearea de adnotări chiar acolo — vezi isLiveVideo mai
+  // sus pentru motiv (timestamp-uri care nu mai au sens după ce live-ul se termină).
+  // Restul paginii (tot ce nu se suprapune cu video-ul) rămâne neatins.
+  function isOverLiveVideo(clientX, clientY) {
+    const video = getMainVideo();
+    if (!isLiveVideo(video)) return false;
+    return isOverVideo({ left: clientX, right: clientX, top: clientY, bottom: clientY });
+  }
+
+  function showLiveBlocked() {
+    showSaveError("Nu poți adnota peste un video live — reîncearcă după ce se termină transmisiunea.");
   }
 
   // Oprește video-ul de fiecare dată când intri în editare (dublu-click), ca să nu
@@ -1809,10 +2264,20 @@
 
     if (onThisPage) {
       const entry = state.annotations.get(ann.id);
-      entry?.el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
       if (ann.data?.videoRange) {
+        // Rămâne vizibilă și în fullscreen (vezi enterVideoFullscreen) — nu scoatem
+        // userul de-acolo doar ca să sară la un moment din video.
         const video = getMainVideo();
         if (video) video.currentTime = ann.data.videoRange.start;
+        entry?.el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+      } else if (document.fullscreenElement) {
+        // Adnotare statică, invizibilă cât ceva e în fullscreen (vezi locateMine) —
+        // ieșim noi înșine, altfel scroll-ul se întâmplă "pe ascuns".
+        document.exitFullscreen().finally(() =>
+          setTimeout(() => entry?.el?.scrollIntoView?.({ behavior: "smooth", block: "center" }), 100)
+        );
+      } else {
+        entry?.el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
       }
     }
 
@@ -1824,6 +2289,114 @@
         }
       });
     }, 0);
+  }
+
+  // ---------- Panou "Ale mele" ----------
+
+  // Apelat DOAR din refreshTopbarVisibility()/closeTopbarNow() — panoul nu mai are
+  // buton propriu de toggle, se ține sincron cu starea tab-ului (vezi mai sus).
+  function setMinePanelOpen(open) {
+    if (state.myPanelOpen === open) return; // deja în starea cerută, nu mai facem nimic
+    state.myPanelOpen = open;
+    els.minePanel.hidden = !open;
+    if (open) {
+      positionMinePanel();
+      renderMineList();
+    }
+    // deschis sau închis, câteva adnotări proprii pot trece de la ascuns la vizibil
+    // (sau invers) dintr-o singură mișcare — recalculăm pentru toate, nu doar una.
+    refreshVisibility();
+  }
+
+  // Listează TOATE adnotările proprii de pe pagina curentă, indiferent dacă sunt
+  // ascunse acum de filtrul de voturi sau de interval video (cât panoul e deschis,
+  // applyVisibility le forțează vizibile pe pagină — vezi mai sus). Click pe o
+  // intrare = sari direct la ea (locateMine), exact ca la "Top global".
+  function renderMineList() {
+    if (!els.mineList) return;
+    els.mineList.innerHTML = "";
+
+    const mine = [...state.annotations.values()]
+      .map((entry) => entry.ann)
+      .filter((ann) => ann.authorId === state.userId)
+      .sort((a, b) => a.createdAt - b.createdAt);
+
+    if (!mine.length) {
+      const message = state.annotationsLoaded
+        ? "N-ai pus încă nimic pe pagina asta."
+        : "⏳ Se încarcă...";
+      els.mineList.appendChild(el("div", { class: "wa-mine-empty" }, message));
+      return;
+    }
+
+    mine.forEach((ann) => {
+      const children = [
+        el("span", { class: "wa-mine-icon" }, annotationIcon(ann.type)),
+        el("span", { class: "wa-mine-label" }, shortLabel(ann)),
+      ];
+      if (ann.data?.videoRange) {
+        children.push(el("span", { class: "wa-mine-time" }, `🎬 ${formatTime(ann.data.videoRange.start)}`));
+      }
+      children.push(el("span", { class: "wa-mine-votes" }, `${ann.votes} 👍`));
+
+      els.mineList.appendChild(
+        el("div", { class: "wa-mine-item", onclick: () => locateMine(ann) }, ...children)
+      );
+    });
+  }
+
+  // Sare la o adnotare proprie: derulează spre ea, o pune la timpul potrivit din
+  // video dacă e legată de un interval, și o marchează scurt cu un contur pulsatoriu
+  // ca să se distingă imediat pe pagină.
+  function locateMine(ann) {
+    const entry = state.annotations.get(ann.id);
+    if (!entry) return;
+    const isVideoAnn = !!ann.data?.videoRange;
+
+    if (isVideoAnn) {
+      const video = getMainVideo();
+      if (video) video.currentTime = ann.data.videoRange.start;
+      // Adnotările legate de video rămân vizibile și în fullscreen (vezi
+      // enterVideoFullscreen) — nu are rost s-o scoatem pe utilizator de-acolo.
+      locateMineStep2(entry);
+      return;
+    }
+
+    // O adnotare STATICĂ (nelegată de video) trăiește tot timpul în #wa-root, care
+    // fiind frate cu <html>, e complet invizibil cât ceva e în fullscreen real —
+    // scrollIntoView ar derula pagina "pe ascuns", fără ca userul să vadă vreo
+    // schimbare până iese manual din fullscreen (exact bug-ul raportat). Ieșim noi
+    // înșine din fullscreen înainte de scroll+flash, ca să chiar se vadă.
+    if (document.fullscreenElement) {
+      document.exitFullscreen().finally(() => setTimeout(() => locateMineStep2(entry), 100));
+    } else {
+      locateMineStep2(entry);
+    }
+  }
+
+  function locateMineStep2(entry) {
+    if (!entry.el) return;
+    entry.el.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    // Scroll-ul "smooth" durează (mai ales pe pagini lungi) — dacă am aprinde flash-ul
+    // imediat, cele 1.6s de contur pulsatoriu s-ar putea consuma cât utilizatorul încă
+    // se uită în altă parte a paginii, pe unde se derulează. Așteptăm finalul scroll-ului
+    // (scrollend) înainte de flash; fallback pe timeout dacă elementul era deja vizibil
+    // (scrollend nu se declanșează dacă nu s-a mișcat nimic) sau browserul nu suportă evenimentul.
+    let flashed = false;
+    const doFlash = () => {
+      if (flashed) return;
+      flashed = true;
+      flashHighlight(entry.el);
+    };
+    window.addEventListener("scrollend", doFlash, { once: true });
+    setTimeout(doFlash, 700);
+  }
+
+  function flashHighlight(domEl) {
+    if (!domEl) return;
+    domEl.classList.add("wa-locate-flash");
+    setTimeout(() => domEl.classList.remove("wa-locate-flash"), 1600);
   }
 
   // ---------- Helpers ----------
@@ -2035,6 +2608,16 @@
       repositionAnchoredAnnotations(); // pagina poate fi deja alt layout decât la creare
     } catch (err) {
       console.warn("[Adormis] Nu pot contacta serverul (e pornit?):", err);
+    } finally {
+      // Setat și pe eroare (nu doar pe succes) — altfel panoul "Ale mele" ar rămâne
+      // înțepenit pe mesajul de "se încarcă" la nesfârșit dacă serverul e jos.
+      state.annotationsLoaded = true;
+      // Dacă utilizatorul a deschis "Ale mele" ÎNAINTE ca cererea de mai sus să se
+      // termine, lista randată atunci era goală (nu apucaseră să sosească adnotările
+      // lui) — o reface acum, cu datele reale. Ăsta era motivul pentru care lista
+      // părea goală "prima dată" și abia la un refresh ulterior (mai norocos cu
+      // timing-ul) arăta corect.
+      if (state.myPanelOpen) renderMineList();
     }
   }
 
@@ -2060,6 +2643,7 @@
     state.annotations.clear();
     document.querySelectorAll(".wa-popover, .wa-spray-confirm, .wa-lb-detail").forEach((p) => p.remove());
     setActiveTool(null);
+    setMinePanelOpen(false); // lista era pentru pagina veche — se reface la o nouă deschidere
     await loadExisting();
     refreshGlobalTop(); // topul e global, nu se resetează la navigare — doar îl reîmprospătăm
   }
@@ -2067,6 +2651,48 @@
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === "TOGGLE_TOOLBAR") toggleToolbar();
   });
+
+  // ---------- Onboarding (o singură dată, vreodată) ----------
+
+  // Tab-ul e acum aproape complet ascuns implicit (vezi CSS) — fără explicație, un
+  // utilizator nou n-ar avea de unde să știe că extensia există pe pagină. Arătăm
+  // O SINGURĂ DATĂ, pe primul site pe care se instalează sau se actualizează
+  // extensia: îl deschidem forțat cu o săgeată/explicație, apoi îl retragem la loc
+  // și explicăm unde să dea cu mouse-ul data viitoare. Flag-ul e global (nu per site)
+  // — altfel ar reapărea enervant pe fiecare domeniu nou vizitat.
+  const ONBOARDING_KEY = "wa_onboarding_seen";
+
+  function showOnboardingCallout(text) {
+    const callout = el("div", { class: "wa-onboarding-callout" }, text);
+    document.documentElement.appendChild(callout);
+    const r = els.topbar.getBoundingClientRect();
+    callout.style.left = r.right + 14 + "px";
+    callout.style.top = (r.top + r.bottom) / 2 + "px";
+    requestAnimationFrame(() => callout.classList.add("wa-visible"));
+    return callout;
+  }
+
+  async function runOnboarding() {
+    const { [ONBOARDING_KEY]: seen } = await chrome.storage.local.get(ONBOARDING_KEY);
+    if (seen) return;
+    // Marcăm imediat "văzut", nu la final — ca un reload rapid în timpul secvenței
+    // să n-o pornească a doua oară.
+    await chrome.storage.local.set({ [ONBOARDING_KEY]: true });
+
+    els.topbar.style.transform = TOPBAR_OPEN_TRANSFORM; // forțează tab-ul complet la vedere
+    setTimeout(() => {
+      const intro = showOnboardingCallout("🖍️ Aici e extensia Adormis!");
+      setTimeout(() => {
+        intro.remove();
+        els.topbar.style.transform = "";
+        refreshTopbarVisibility(); // revine la starea reală (rămâne deschis doar dacă mouse-ul chiar e pe el sau ceva e activ)
+        setTimeout(() => {
+          const hint = showOnboardingCallout("👈 Ca să accesezi extensia, adu mouse-ul aici, în stânga.");
+          setTimeout(() => hint.remove(), 3500);
+        }, 300); // așteaptă tranziția de retragere a tab-ului înainte să poziționăm indiciul
+      }, 2500);
+    }, 300); // așteaptă tranziția de deschidere forțată înainte să poziționăm balonașul
+  }
 
   (async function init() {
     state.userId = await window.WA_Storage.getUserId();
@@ -2077,7 +2703,9 @@
     initTextTool();
     initBubbleTool();
     initLinkTool();
+    wireTopbarReveal();
     watchForNavigation();
+    runOnboarding();
     await loadExisting();
     await refreshGlobalTop();
     setInterval(refreshGlobalTop, 30000); // prinde și voturile date de alții, pe alte pagini, între timp

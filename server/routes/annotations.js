@@ -1,7 +1,26 @@
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const { db, REPORT_HIDE_THRESHOLD } = require("../db");
 
 const router = express.Router();
+
+// Limită proprie, mai strictă, doar pentru scrieri (creare/editare/ștergere/vot/
+// raportare) — peste limita generală din server.js. Un utilizator normal nu se
+// apropie de 20/minut din interacțiune reală; un script de spam, da.
+const writeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Prea multe acțiuni la rând — încearcă din nou peste un minut." },
+});
+
+// Linkurile din adnotări trebuie să fie http(s) — extensia verifică deja asta în
+// formular, dar oricine poate trimite direct la API un `javascript:...`, care ar
+// rula cod pe pagina celui care dă click. Verificăm aici, pe datele finale.
+function hasUnsafeLink(data) {
+  return data && data.url !== undefined && !/^https?:\/\//i.test(String(data.url));
+}
 
 function serialize(row) {
   return {
@@ -37,8 +56,22 @@ router.get("/", (req, res) => {
 // GET /api/annotations/top?limit=10 — cele mai votate adnotări de pe TOATE paginile
 // (nu doar pagina curentă), pentru panoul global "Top". Cere măcar 1 vot, ca locurile
 // goale să rămână goale în loc să se umple cu adnotări proaspete fără niciun like.
+//
+// Cache în memorie, per `limit` cerut, 10 secunde — fiecare tab deschis cu extensia
+// cere asta la fiecare 30s (refreshGlobalTop), automat, indiferent dacă cineva se
+// uită sau nu. Cu multe tab-uri deschise simultan (campanie de promovare = exact
+// scenariul), rezultatul e IDENTIC pentru toată lumea și nu are rost să lovim baza
+// de date de fiecare dată — 10s de întârziere pe un clasament global e nesesizabil.
+const topCache = new Map(); // limit -> { data, expiresAt }
+const TOP_CACHE_TTL_MS = 10_000;
+
 router.get("/top", (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
+
+  const cached = topCache.get(limit);
+  if (cached && cached.expiresAt > Date.now()) {
+    return res.json(cached.data);
+  }
 
   const rows = db
     .prepare(
@@ -49,14 +82,19 @@ router.get("/top", (req, res) => {
     )
     .all(REPORT_HIDE_THRESHOLD, limit);
 
-  res.json(rows.map(serialize));
+  const data = rows.map(serialize);
+  topCache.set(limit, { data, expiresAt: Date.now() + TOP_CACHE_TTL_MS });
+  res.json(data);
 });
 
 // POST /api/annotations  { url, type, data, authorId }
-router.post("/", (req, res) => {
+router.post("/", writeLimiter, (req, res) => {
   const { url, type, data, authorId } = req.body || {};
   if (!url || !type || !data || !authorId) {
     return res.status(400).json({ error: "Missing url, type, data or authorId" });
+  }
+  if (hasUnsafeLink(data)) {
+    return res.status(400).json({ error: "Link must start with http:// or https://" });
   }
 
   const id = crypto.randomUUID();
@@ -74,7 +112,7 @@ router.post("/", (req, res) => {
 // PATCH /api/annotations/:id  { authorId, patch: { ...câmpuri de suprascris în data } }
 // Folosit atât pentru mutare (patch: {x,y}) cât și pentru editare text/link (patch: {text} sau {url,label}).
 // Doar autorul original poate edita.
-router.patch("/:id", (req, res) => {
+router.patch("/:id", writeLimiter, (req, res) => {
   const { id } = req.params;
   const { authorId, patch } = req.body || {};
   if (!authorId || !patch || typeof patch !== "object") {
@@ -88,6 +126,9 @@ router.patch("/:id", (req, res) => {
   }
 
   const data = { ...JSON.parse(row.data), ...patch };
+  if (hasUnsafeLink(data)) {
+    return res.status(400).json({ error: "Link must start with http:// or https://" });
+  }
   db.prepare("UPDATE annotations SET data = ? WHERE id = ?").run(JSON.stringify(data), id);
 
   const updated = db.prepare("SELECT * FROM annotations WHERE id = ?").get(id);
@@ -95,7 +136,7 @@ router.patch("/:id", (req, res) => {
 });
 
 // DELETE /api/annotations/:id  { authorId }  -- only the original author can delete
-router.delete("/:id", (req, res) => {
+router.delete("/:id", writeLimiter, (req, res) => {
   const { id } = req.params;
   const { authorId } = req.body || {};
 
@@ -112,7 +153,7 @@ router.delete("/:id", (req, res) => {
 });
 
 // POST /api/annotations/:id/vote  { voterId, direction: 'up'|'down' }
-router.post("/:id/vote", (req, res) => {
+router.post("/:id/vote", writeLimiter, (req, res) => {
   const { id } = req.params;
   const { voterId, direction } = req.body || {};
 
@@ -150,7 +191,7 @@ router.post("/:id/vote", (req, res) => {
 });
 
 // POST /api/annotations/:id/report  { reporterId }
-router.post("/:id/report", (req, res) => {
+router.post("/:id/report", writeLimiter, (req, res) => {
   const { id } = req.params;
   const { reporterId } = req.body || {};
   if (!reporterId) return res.status(400).json({ error: "Missing reporterId" });

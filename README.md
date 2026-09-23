@@ -70,8 +70,10 @@ Dacă rulezi backend-ul pe altă mașină/port, schimbă adresa din popup („Ad
 4. **Variabile de mediu** (Settings → Variables):
    - `DB_PATH` = `/data/annotations.db`
    - `PORT` — Railway o setează singur, serverul o citește deja (`process.env.PORT`).
-5. După deploy, Railway dă un URL public (`https://ceva.up.railway.app`) — pune-l în
-   popup-ul extensiei, la „Adresă server" (fiecare utilizator își face asta o dată).
+   - `URLHAUS_AUTH_KEY` — cheie gratuită de pe auth.abuse.ch, pentru verificarea
+     linkurilor; fără ea verificarea e dezactivată (linkurile trec).
+5. Adresa serverului live e setată implicit în `extension/background.js`
+   (`DEFAULT_SERVER_URL`) — utilizatorii nu trebuie să configureze nimic.
 
 ## Limitări cunoscute (MVP)
 

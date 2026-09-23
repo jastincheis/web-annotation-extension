@@ -74,5 +74,33 @@
     return res.ok;
   }
 
-  window.WA_Api = { listAnnotations, listTopGlobal, createAnnotation, updateAnnotation, vote, report, remove };
+  // Verifică un link (URLhaus, prin server — cheia API nu trebuie expusă în
+  // extensie). Fail-open la orice problemă: dacă serverul nu răspunde sau
+  // verificarea nu poate rula, considerăm linkul sigur (checked:false) — nu blocăm
+  // o funcționalitate de bază doar pentru că paza suplimentară e indisponibilă.
+  async function checkUrl(url) {
+    try {
+      const b = await base();
+      const res = await fetch(`${b}/api/check-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) return { safe: true, checked: false };
+      return res.json();
+    } catch {
+      return { safe: true, checked: false };
+    }
+  }
+
+  window.WA_Api = {
+    listAnnotations,
+    listTopGlobal,
+    createAnnotation,
+    updateAnnotation,
+    vote,
+    report,
+    remove,
+    checkUrl,
+  };
 })();
