@@ -29,11 +29,20 @@ creează automat lângă `server.js`, folosind modulul nativ `node:sqlite` — n
 nevoie de compilare (necesită Node ≥ 22.5).
 
 Endpoint-uri disponibile:
-- `GET /api/annotations?url=<url>` — listă adnotări pentru o pagină
+- `GET /api/health` — `{ok: true}`
+- `GET /api/version` — conținutul `version.json` (`{latest, notes}`), pentru beculețul de update
+- `GET /api/annotations?url=<url>&minVotes=0` — listă adnotări pentru o pagină
+- `GET /api/annotations/top?limit=10` — cele mai votate adnotări de pe toate paginile
+  (min. 1 vot, `limit` max. 50, cache 10s)
 - `POST /api/annotations` — creează `{url, type, data, authorId}`
+- `PATCH /api/annotations/:id` — `{authorId, patch}` (mutare sau editare text/link; doar autorul)
+- `DELETE /api/annotations/:id` — `{authorId}` (doar autorul își poate șterge propria adnotare)
 - `POST /api/annotations/:id/vote` — `{voterId, direction: "up"|"down"}`
 - `POST /api/annotations/:id/report` — `{reporterId}` (auto-ascundere la 5 raportări)
-- `DELETE /api/annotations/:id` — `{authorId}` (doar autorul își poate șterge propria adnotare)
+- `POST /api/check-url` — `{url}` → `{safe, checked, threats}` (verificare URLhaus;
+  fără `URLHAUS_AUTH_KEY` linkurile trec)
+
+Limite: 120 cereri/minut per IP pe tot API-ul, plus 20/minut pe rutele de scriere.
 
 ## 2. Încarcă extensia în Chrome
 
@@ -87,6 +96,5 @@ Dacă rulezi backend-ul pe altă mașină/port, schimbă adresa din popup („Ad
 
 1. Deploy backend pe AWS/DigitalOcean (schimbă doar adresa din popup).
 2. Login Gmail + reCAPTCHA înainte de a permite creare/vot.
-3. Endpoint `PATCH` pentru repoziționarea adnotărilor după creare.
-4. NFT-urile și integrarea blockchain, ca fază separată — cer decizii de arhitectură
+3. NFT-urile și integrarea blockchain, ca fază separată — cer decizii de arhitectură
    proprii (wallet custodial vs. non-custodial, ce chain, cine plătește gas).
