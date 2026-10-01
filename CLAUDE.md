@@ -41,6 +41,8 @@ Node/Express/SQLite. Detalii de utilizare și deploy: `README.md`.
 
 ## Verificare în browser
 
+Pașii completi sunt în skill-ul `/verify-ui` (`.claude/skills/verify-ui/SKILL.md`). Pe scurt:
+
 - După orice modificare în `extension/`: reîncarcă extensia din `chrome://extensions`, apoi
   reîncarcă pagina de test (content script-urile vechi nu se actualizează singure).
 - Pentru test local, setează „Adresă server” din popup la `http://localhost:4000`.
