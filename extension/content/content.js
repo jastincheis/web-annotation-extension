@@ -22,6 +22,13 @@
   let pendingToolFinish = null; // dacă o unealtă are o sesiune deschisă (ex. spray), finalizeaz-o la schimbarea uneltei
 
   function pageKey() {
+    // Pe YouTube, același video apare cu parametri în plus (&t=, &list=, &pp=...) —
+    // fără normalizare, un link cu timestamp sau din playlist părea altă pagină și
+    // adnotările nu se mai încărcau. Păstrăm doar ID-ul video-ului.
+    if (/(^|\.)youtube\.com$/.test(location.hostname) && location.pathname === "/watch") {
+      const v = new URLSearchParams(location.search).get("v");
+      if (v) return location.origin + "/watch?v=" + v;
+    }
     return location.origin + location.pathname + location.search;
   }
 
@@ -774,18 +781,23 @@
     const isMine = entry.ann.authorId === state.userId;
     const forced = state.myPanelOpen && isMine;
 
-    let hidden = false;
-    if (!forced) {
-      if (entry.ann.votes < state.minVotes) hidden = true;
-      const range = entry.ann.data?.videoRange;
-      if (range) {
-        const video = getMainVideo();
-        const t = video ? video.currentTime : 0;
-        if (t < range.start || t > range.end) hidden = true;
-      }
+    let filtered = false;
+    if (entry.ann.votes < state.minVotes) filtered = true;
+    const range = entry.ann.data?.videoRange;
+    if (range) {
+      const video = getMainVideo();
+      const t = video ? video.currentTime : 0;
+      if (t < range.start || t > range.end) filtered = true;
     }
+    const hidden = filtered && !forced;
+    // Forțată de panou dar altfel ascunsă → semi-transparentă, ca autorul să vadă că
+    // intervalul/filtrul funcționează (înainte părea mereu vizibilă și intervalul "stricat").
+    const dimmed = filtered && forced;
 
-    if (entry.el) entry.el.style.display = hidden ? "none" : "";
+    if (entry.el) {
+      entry.el.style.display = hidden ? "none" : "";
+      entry.el.classList.toggle("wa-dimmed", dimmed);
+    }
     if (entry.control) entry.control.style.display = hidden ? "none" : "";
   }
 
@@ -1135,10 +1147,22 @@
 
   function exitVideoFullscreen() {
     if (!videoLayerActive) return;
-    movedIntoVideoLayer.splice(0).forEach(({ domEl, domParent, domNext, control, controlParent, controlNext }) => {
-      domParent.insertBefore(domEl, domNext);
-      if (control && controlParent) controlParent.insertBefore(control, controlNext);
-    });
+    // Vecinul memorat (nextSibling) poate fi el însuși mutat în stratul video — de obicei
+    // chiar controlul de vot al adnotării. insertBefore cu un nod care nu mai e copilul
+    // părintelui aruncă NotFoundError, oprea restaurarea la jumătate și lăsa adnotarea
+    // blocată în stratul de fullscreen (apărea apoi și pe alte video-uri). Restaurăm în
+    // ordine inversă, controlul înaintea adnotării, și cădem pe "la final" dacă vecinul lipsește.
+    const restore = (node, parent, next) => {
+      if (!node || !parent) return;
+      parent.insertBefore(node, next && next.parentNode === parent ? next : null);
+    };
+    movedIntoVideoLayer
+      .splice(0)
+      .reverse()
+      .forEach(({ domEl, domParent, domNext, control, controlParent, controlNext }) => {
+        restore(control, controlParent, controlNext);
+        restore(domEl, domParent, domNext);
+      });
     els.videoRoot.classList.remove("wa-active");
     document.documentElement.appendChild(els.videoRoot);
     videoLayerActive = false;
@@ -1318,6 +1342,14 @@
     let raf = null;
     let confirmBar = null;
     let anchor = null;
+    // Ca la un spray real: cât ții apăsat pe loc, norul se îngroașă (nu doar la mișcare).
+    let holdTimer = null;
+    let lastPoint = null;
+
+    function stopHold() {
+      clearInterval(holdTimer);
+      holdTimer = null;
+    }
 
     function addDots(x, y) {
       for (let i = 0; i < 4; i++) {
@@ -1405,11 +1437,18 @@
       }
       const { x, y } = pagePoint(e);
       addDots(x, y);
+      lastPoint = { x, y };
+      stopHold();
+      holdTimer = setInterval(() => {
+        if (!spraying || !group || state.activeTool !== "spray") return stopHold();
+        addDots(lastPoint.x, lastPoint.y);
+      }, 80);
     });
 
     els.svg.addEventListener("pointermove", (e) => {
       if (!spraying || state.activeTool !== "spray") return;
       const { x, y } = pagePoint(e);
+      lastPoint = { x, y };
       if (raf) return;
       raf = requestAnimationFrame(() => {
         addDots(x, y);
@@ -1420,6 +1459,7 @@
     window.addEventListener("pointerup", () => {
       if (!spraying) return;
       spraying = false;
+      stopHold();
       // nu salvăm aici — sesiunea rămâne deschisă până apeși OK sau Anulează
     });
   }
@@ -1942,7 +1982,12 @@
   function shortenUrl(url) {
     try {
       const u = new URL(url);
-      const tail = u.pathname !== "/" ? u.pathname.slice(0, 20) : "";
+      // decodăm ca diacriticele să apară normal ("Bistrița", nu "Bistri%C8%9Ba")
+      let path = u.pathname;
+      try {
+        path = decodeURIComponent(path);
+      } catch {}
+      const tail = path !== "/" ? path.slice(0, 20) : "";
       return u.hostname.replace(/^www\./, "") + tail;
     } catch {
       return url.slice(0, 30);
@@ -2010,7 +2055,13 @@
   // să nu blocăm din greșeală un VOD normal chiar în primele clipe după load.
   function isLiveVideo(video) {
     video = video || getMainVideo();
-    return !!video && video.duration === Infinity;
+    if (!video) return false;
+    if (video.duration === Infinity) return true;
+    // YouTube redă live-urile prin MediaSource cu o durată FINITĂ (fereastra DVR), deci
+    // testul de mai sus nu le prinde. Player-ul marchează însă afișajul timpului cu
+    // "ytp-live" doar pe live — îl căutăm în player-ul care conține video-ul.
+    const player = video.closest(".html5-video-player");
+    return !!player?.querySelector(".ytp-time-display.ytp-live");
   }
 
   // Punctul de ecran (clientX, clientY) cade peste fereastra unui video care e ACUM
@@ -2640,6 +2691,11 @@
   async function onPageNavigated() {
     els.svg.innerHTML = "";
     els.elements.innerHTML = "";
+    // Și straturile-geamăn de fullscreen — altfel o adnotare video a paginii vechi
+    // (dacă navigarea vine în fullscreen, ex. autoplay) rămânea afișată pe video-ul nou.
+    els.videoSvg.innerHTML = "";
+    els.videoElements.innerHTML = "";
+    movedIntoVideoLayer.length = 0;
     state.annotations.clear();
     document.querySelectorAll(".wa-popover, .wa-spray-confirm, .wa-lb-detail").forEach((p) => p.remove());
     setActiveTool(null);

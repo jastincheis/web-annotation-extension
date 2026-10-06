@@ -1,4 +1,4 @@
 {
-  "latest": "0.2.0",
-  "notes": "Panou „📍 Ale mele”, avertisment când salvarea eșuează, verificare linkuri periculoase."
+  "latest": "0.2.1",
+  "notes": "Reparații YouTube: bulele nu mai rămân blocate după ecran complet, adnotările apar și pe linkuri cu timp/playlist, blocare corectă pe live-uri."
 }

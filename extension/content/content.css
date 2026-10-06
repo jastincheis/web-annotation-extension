@@ -730,3 +730,9 @@
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* Adnotare proprie forțată vizibilă de panoul „Ale mele”, deși e în afara intervalului
+   video sau sub filtrul de voturi — o arătăm estompat ca să se vadă că filtrul merge. */
+.wa-dimmed {
+  opacity: 0.35 !important;
+}
