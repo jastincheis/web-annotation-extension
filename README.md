@@ -53,17 +53,21 @@ Limite: 120 cereri/minut per IP pe tot API-ul, plus 20/minut pe rutele de scrier
 
 ## 3. Folosire
 
-- Click pe iconița extensiei → **„Arată / ascunde bara de unelte”** → apare toolbar-ul
-  în stânga paginii curente.
-- **Pen** — desen liber. **Spray** — graffiti (puncte împrăștiate). **Formă** — bulă /
-  cerc / săgeată (click-drag). **Text** — click pe pagină, scrie, apoi click în afară
-  ca să salvezi. **🎬 Video** — dacă pagina are un `<video>`, deschide un formular pentru
-  o bulă cu text la o secundă/durată specifice.
-- Fiecare adnotare are lângă ea 👍 👎 🚩 (like/dislike/raportează); autorul vede și 🗑.
-- „Arată doar peste X voturi” filtrează ce se vede pe pagină.
-- **🏆 Top** deschide un clasament lateral cu cele mai votate adnotări de pe pagina curentă.
+- Butonul rotund de pe marginea din dreapta a paginii (sau **Alt+A**, sau popup-ul
+  extensiei) deschide **dock-ul** — bara de unelte de sus. Se mută trăgând de mânerul ⠿
+  (își ține minte locul pe fiecare site; dublu-click pe mâner = înapoi la locul implicit).
+- Unelte și scurtături (cât e deschis dock-ul): **V** selectează, **P** creion, **S** spray,
+  **F** formă (cerc, dreptunghi, stea, săgeată...), **B** bulă, **T** text, **L** link,
+  **Esc** închide. Bulina colorată deschide culoarea / grosimea / tipul formei.
+- Pe YouTube, Netflix și alte video-uri, adnotările se leagă de video și se pot limita la
+  un interval de timp (dublu-click pe adnotare). Merg și în fullscreen, unde se vede și
+  dock-ul.
+- Fiecare adnotare are lângă ea 👍 👎 🚩 (like/dislike/raportează); autorul vede și 🔗
+  (pune un link pe adnotare — apare ca pastilă pe colțul ei) și 🗑.
+- 📍 din dock = adnotările tale de pe pagina curentă; 🏆 = arată / ascunde Topul global.
 - Adnotările sunt publice: oricine cu extensia instalată și configurată spre același
-  server le vede pe același URL (`origin + pathname + querystring`).
+  server le vede pe aceeași pagină (`origin + pathname + querystring`, fără parametri de
+  urmărire `utm_*`/`fbclid`...; pe YouTube doar `?v=`, pe Netflix doar `/watch/<id>`).
 
 Dacă rulezi backend-ul pe altă mașină/port, schimbă adresa din popup („Adresă server”)
 și reîncarcă pagina.

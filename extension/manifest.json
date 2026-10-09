@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Adormis",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Adaugă graffiti, bule cu text și comentarii pe orice pagină web sau video.",
   "permissions": ["storage", "activeTab", "alarms"],
   "host_permissions": ["http://*/*", "https://*/*"],
@@ -25,9 +25,20 @@
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
+      "js": ["content/key-guard.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
       "js": ["lib/storage.js", "lib/api.js", "content/content.js"],
       "css": ["content/content.css"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.netflix.com/*"],
+      "js": ["content/page-bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ]
 }

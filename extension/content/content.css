@@ -11,6 +11,9 @@
   width: 100%;
   z-index: 2147483000;
   pointer-events: none;
+  /* mânerele/controalele de lângă o adnotare pusă chiar la marginea paginii nu mai
+     lărgesc pagina (bară de derulare orizontală apărută din senin, ex. pe Netflix) */
+  overflow: clip;
 }
 
 #wa-svg-layer {
@@ -88,84 +91,51 @@
   pointer-events: auto;
 }
 
-/* Tab vertical lipit de marginea din stânga, la mijlocul înălțimii paginii. Aproape
-   tot ascuns implicit — doar o fâșie subțire (14px) rămâne vizibilă la marginea
-   ecranului. Vizibilitatea NU se mai bazează pe o clasă + regulă CSS (a fost greu de
-   verificat/depanat live, indiferent de specificitate) — JS-ul setează direct
-   `style.transform` ca să deschidă (inline, câștigă mereu), și îl golește la loc ca
-   să se retragă (revine automat la regula de bază de mai jos). Vezi
-   refreshTopbarVisibility() în content.js. Timing-ul (delay la retragere etc.) e
-   controlat tot din JS, cu setTimeout — același model ca wireHoverReveal(). */
+/* Butonul rotund de pornire — pe jumătate ascuns în marginea din dreapta, iese la hover.
+   Cât e deschis dock-ul, se ascunde (.wa-hidden, vezi refreshTopbarVisibility în JS). */
 #wa-topbar {
   position: fixed;
   top: 50%;
-  left: 0;
-  right: auto;
-  width: auto;
-  max-width: calc(100vw - 20px);
-  transform: translateY(-50%) translateX(calc(-100% + 14px));
-  transition: transform 0.22s ease;
-  background: #1e1b2e;
-  border: 1px solid #3d3560;
-  border-left: none;
-  border-radius: 0 14px 14px 0;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  right: 0;
+  transform: translate(22px, -50%);
+  transition: transform 0.18s ease, opacity 0.18s ease;
   pointer-events: auto;
-  z-index: 2147483002; /* peste #wa-toolbar, ca banda să rămână vizibilă și când uneltele sunt deschise */
+  z-index: 2147483002;
 }
-
-/* Text vertical (de sus în jos) — mânerul discret care rămâne mereu peeking din
-   marginea ecranului, chiar și cât restul tab-ului e retras. */
-/* Retrage tab-ul instant, la cerere — vezi closeTopbarNow() în JS. E primul copil
-   (deci el primește colțul rotunjit din dreapta-sus al tab-ului). */
-#wa-topbar-close {
-  flex: 0 0 auto;
-  padding: 4px 0;
-  border: 1px solid #3d3560;
-  border-bottom: none;
-  border-radius: 0 14px 0 0;
-  background: #171425;
-  color: #c9c3e6;
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-}
-#wa-topbar-close:hover { background: #241f3a; color: #eae6ff; }
+#wa-topbar:hover,
+#wa-topbar.wa-peek { transform: translate(-8px, -50%); }
+#wa-topbar.wa-hidden { opacity: 0; pointer-events: none; transform: translate(60px, -50%); }
 
 #wa-toggle-btn {
-  flex: 0 0 auto;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  padding: 16px 10px;
-  border-radius: 0 0 14px 0;
-  border: 1px solid transparent;
-  background: linear-gradient(135deg, #7c3aed, #ec4899);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: linear-gradient(140deg, #7c3aed, #ec4899);
   color: white;
-  font-weight: 600;
-  font-size: 13px;
+  display: grid;
+  place-items: center;
   cursor: pointer;
-  white-space: nowrap;
+  padding: 0;
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
-#wa-toggle-btn:hover { filter: brightness(1.1); }
-#wa-toggle-btn.active { outline: 2px solid #a78bfa; outline-offset: 1px; }
+#wa-toggle-btn .wa-ico svg { width: 21px; height: 21px; }
+#wa-toggle-btn:hover { filter: brightness(1.08); }
+#wa-toggle-btn:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
 
-/* Balonaș de onboarding (săgeată + text), arătat o singură dată în viață — vezi
-   runOnboarding() în JS. Săgeata (::before/::after) indică spre tab, în stânga lui. */
+
+/* Balonaș de onboarding (text + săgeată spre butonul rotund din dreapta), arătat o singură
+   dată în viață — vezi runOnboarding() în JS. */
 .wa-onboarding-callout {
   position: fixed;
-  transform: translateY(-50%) translateX(-8px);
+  transform: translateY(-50%) translateX(8px);
   background: #1e1b2e;
   border: 1px solid #3d3560;
   color: #eae6ff;
   padding: 10px 14px;
   border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  max-width: 220px;
-  line-height: 1.4;
+  font: 600 13px/1.4 system-ui, sans-serif;
+  max-width: 240px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   pointer-events: none;
   z-index: 2147483003;
@@ -180,28 +150,24 @@
 .wa-onboarding-callout::after {
   content: "";
   position: absolute;
-  left: -6px;
+  right: -6px;
   top: 50%;
   transform: translateY(-50%);
   border-style: solid;
-  border-width: 6px 6px 6px 0;
+  border-width: 6px 0 6px 6px;
 }
-.wa-onboarding-callout::before { border-color: transparent #3d3560 transparent transparent; }
-.wa-onboarding-callout::after { left: -5px; border-width: 5px 5px 5px 0; border-color: transparent #1e1b2e transparent transparent; }
+.wa-onboarding-callout::before { border-color: transparent transparent transparent #3d3560; }
+.wa-onboarding-callout::after { right: -5px; border-width: 5px 0 5px 5px; border-color: transparent transparent transparent #1e1b2e; }
 
-/* Panou "Ale mele" — apare/dispare automat odată cu tab-ul (fără buton propriu de
-   deschis, vezi setMinePanelOpen în JS). Listează TOATE adnotările autorului pe
-   pagina curentă, chiar și cele ascunse acum de filtrul de voturi sau de intervalul
-   video (vezi applyVisibility în JS). */
-/* Plutește lipit de marginea din dreapta a tab-ului (nu mai e ancorat de marginea
-   din stânga a paginii) — apare/dispare automat odată cu tab-ul, deci vizual
-   formează o singură bucată cu el. left/top sunt calculate în positionMinePanel(),
-   pe baza poziției REALE a tab-ului (care poate fi oriunde vertical). */
+
+/* Panou "Ale mele" — se deschide din butonul 📍 al dock-ului, chiar sub el (left/top
+   vin din positionMinePanel în JS). Listează TOATE adnotările autorului pe pagina
+   curentă, chiar și cele ascunse acum de filtrul de voturi sau de intervalul video
+   (vezi applyVisibility în JS). */
 #wa-mine-panel {
   position: fixed;
-  top: 50%; /* fallback până rulează JS-ul (positionMinePanel), care îl suprascrie */
+  top: 70px; /* fallback până rulează JS-ul (positionMinePanel), care îl suprascrie */
   left: 100px;
-  transform: translateY(-50%);
   width: 260px;
   max-height: 60vh;
   overflow-y: auto;
@@ -212,7 +178,7 @@
   color: #eae6ff;
   font-size: 12px;
   pointer-events: auto;
-  z-index: 2147483001;
+  z-index: 2147483002;
 }
 #wa-mine-panel[hidden] { display: none; }
 
@@ -295,6 +261,7 @@
   transition: opacity 0.15s;
 }
 #wa-leaderboard-panel:hover { opacity: 1; }
+#wa-leaderboard-panel[hidden] { display: none; }
 
 .wa-lb-slot {
   width: 20px;
@@ -394,98 +361,153 @@
 }
 .wa-link-warning button:hover { background: #8b4ff0; }
 
-/* Bară de unelte orizontală — atârnă sub banda permanentă, se deschide/închide */
+/* Dock flotant — pastilă compactă, sus pe centru (sau unde a fost trasă de mâner).
+   left/top/transform vin din JS (positionToolbar). Stilurile de bază sunt scrise explicit
+   (font, margini, line-height), ca site-ul gazdă să nu le poată strica prin reguli generice. */
 #wa-toolbar {
   position: fixed;
-  left: 0;
-  right: 0;
-  width: 100%;
-  background: #1e1b2e;
-  border: none;
-  border-bottom: 1px solid #3d3560;
-  border-radius: 0;
-  padding: 8px 14px;
   display: flex;
-  flex-direction: row;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 14px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  gap: 2px;
+  padding: 5px;
+  margin: 0;
+  background: rgba(30, 27, 46, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid #3d3560;
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  font: 500 13px/1 system-ui, sans-serif;
+  color: #eae6ff;
   pointer-events: auto;
   z-index: 2147483001; /* peste #wa-root, altfel layer-ul de desen fură click-urile când o unealtă e activă */
+  max-width: calc(100vw - 8px);
+  flex-wrap: wrap;
 }
 #wa-toolbar[hidden] { display: none; }
+#wa-toolbar.wa-dragging { opacity: 0.9; cursor: grabbing; }
 
-#wa-toolbar .wa-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: nowrap;
+.wa-ico { display: inline-grid; place-items: center; line-height: 0; }
+.wa-ico svg { width: 19px; height: 19px; display: block; }
+
+.wa-dock-grip {
+  width: 16px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: #8b839f;
+  cursor: grab;
+  touch-action: none;
 }
+.wa-dock-grip .wa-ico svg { width: 16px; height: 16px; }
+.wa-dock-grip:hover { color: #eae6ff; }
 
-#wa-toolbar button.wa-tool {
-  flex: 0 0 auto;
-  min-width: 38px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  background: #2a2545;
-  color: #eae6ff;
-  cursor: pointer;
-  font-size: 16px;
-}
-#wa-toolbar button.wa-tool:hover { background: #362e5c; }
-#wa-toolbar button.wa-tool.active {
-  background: #7c3aed;
-  border-color: #a78bfa;
-}
-
-#wa-toolbar label {
-  color: #c9c3e6;
-  font-size: 11px;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-#wa-toolbar input[type="color"] {
-  width: 30px;
-  height: 26px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  padding: 0;
-}
-
-#wa-toolbar input[type="range"] { width: 80px; }
-#wa-toolbar input[type="number"] { width: 56px; }
-
-#wa-toolbar select {
-  padding: 4px;
-  border-radius: 6px;
-  background: #2a2545;
-  color: #eae6ff;
-  border: 1px solid #3d3560;
-}
-
-#wa-toolbar hr {
-  border: none;
-  border-left: 1px solid #3d3560;
-  width: 0;
-  align-self: stretch;
+.wa-dock-btn {
+  width: 36px;
+  height: 36px;
   margin: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #eae6ff;
+  cursor: pointer;
+  box-shadow: none;
+}
+.wa-dock-btn:hover { background: #362e5c; }
+.wa-dock-btn.active { background: #7c3aed; color: white; }
+.wa-dock-btn:focus-visible { outline: 2px solid #a78bfa; outline-offset: 1px; }
+.wa-dock-btn.wa-top-btn .wa-ico { color: #f5c542; }
+.wa-dock-btn.wa-top-btn.active { background: #2a2545; }
+.wa-dock-btn.wa-close { color: #a39cc4; }
+
+.wa-dock-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 3px;
+  background: #3d3560;
 }
 
-#wa-toolbar .wa-close {
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: #c9c3e6;
-  cursor: pointer;
-  font-size: 14px;
-  flex: 0 0 auto;
+.wa-color-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px #3d3560;
 }
+
+/* Meniul mic de culoare / grosime / formă, sub butonul cu bulina de culoare */
+#wa-style-popover {
+  position: fixed;
+  width: 248px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  background: #1e1b2e;
+  border: 1px solid #3d3560;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  font: 500 12px/1.2 system-ui, sans-serif;
+  color: #eae6ff;
+  pointer-events: auto;
+  z-index: 2147483003;
+}
+#wa-style-popover[hidden] { display: none; }
+.wa-pop-label {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a39cc4;
+}
+.wa-pop-row { display: flex; align-items: center; gap: 6px; }
+.wa-pop-wrap { flex-wrap: wrap; }
+.wa-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: 0 0 0 1px #3d3560;
+  cursor: pointer;
+}
+.wa-swatch.active { border-color: white; }
+.wa-swatch-custom {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.wa-width {
+  width: 40px;
+  height: 30px;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: #2a2545;
+  cursor: pointer;
+}
+.wa-width i { display: block; border-radius: 99px; background: #eae6ff; }
+.wa-width.active { background: #362e5c; box-shadow: inset 0 0 0 1.5px #7c3aed; }
+.wa-shape-kind {
+  padding: 5px 8px;
+  margin: 0;
+  border: 0;
+  border-radius: 7px;
+  background: #2a2545;
+  color: #eae6ff;
+  font: 500 11.5px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.wa-shape-kind:hover { background: #362e5c; }
+.wa-shape-kind.active { background: #7c3aed; color: white; }
+
 
 /* Control de vot atașat lângă fiecare adnotare — ascuns implicit, apare doar la
    hover pe adnotare (sau pe el însuși, cât timp muți mouse-ul spre el). Pe pagină
@@ -736,3 +758,49 @@
 .wa-dimmed {
   opacity: 0.35 !important;
 }
+
+/* Adnotare pusă pe o poză care nu (mai) e pe pagină — vezi repositionAnchoredAnnotations. */
+.wa-orphan {
+  display: none !important;
+}
+
+/* Cât ține un fullscreen peste video, adnotările care nu țin de video (de pe restul paginii)
+   se ascund — vezi moveUiIntoFullscreen în JS. */
+.wa-fs-off {
+  display: none !important;
+}
+
+/* Netflix/YouTube ascund cursorul în fullscreen după câteva secunde fără mișcare (cursor: none
+   pe containerul player-ului, moștenit de tot ce e înăuntru) — peste UI-ul nostru îl vrem vizibil. */
+#wa-topbar,
+#wa-toolbar,
+#wa-style-popover,
+#wa-mine-panel,
+#wa-leaderboard-panel,
+.wa-spray-confirm,
+.wa-popover {
+  cursor: default;
+}
+#wa-svg-layer.wa-drawing { cursor: crosshair; }
+
+/* Link atașat pe o adnotare oarecare (desen, text, bulă...) — pastilă lipită de colțul ei,
+   vizibilă pentru toată lumea. Poziția vine din positionAttachedLink în JS. */
+.wa-link-chip {
+  position: absolute;
+  max-width: 180px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(20, 16, 36, 0.92);
+  border: 1px solid #3d3560;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  color: #93c5fd;
+  font: 600 11px/1.3 system-ui, sans-serif;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  z-index: 2;
+}
+.wa-link-chip:hover { text-decoration: underline; border-color: #7c3aed; }
+.wa-unlink { color: #fca5a5 !important; }

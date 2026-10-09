@@ -18,8 +18,9 @@ const writeLimiter = rateLimit({
 // Linkurile din adnotări trebuie să fie http(s) — extensia verifică deja asta în
 // formular, dar oricine poate trimite direct la API un `javascript:...`, care ar
 // rula cod pe pagina celui care dă click. Verificăm aici, pe datele finale.
+// Șirul gol e permis: înseamnă „link scos” de pe o adnotare (orice tip poate avea link atașat).
 function hasUnsafeLink(data) {
-  return data && data.url !== undefined && !/^https?:\/\//i.test(String(data.url));
+  return data && data.url !== undefined && data.url !== "" && !/^https?:\/\//i.test(String(data.url));
 }
 
 function serialize(row) {

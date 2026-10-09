@@ -29,7 +29,19 @@
       const v = new URLSearchParams(location.search).get("v");
       if (v) return location.origin + "/watch?v=" + v;
     }
-    return location.origin + location.pathname + location.search;
+    // Netflix: /watch/<id>?trackId=...&tctx=... — parametrii diferă de la om la om și de la
+    // sesiune la sesiune, deci fiecare ar fi văzut doar propriile adnotări. ID-ul e în cale.
+    if (/(^|\.)netflix\.com$/.test(location.hostname) && /^\/watch\/\d+/.test(location.pathname)) {
+      return location.origin + location.pathname.match(/^\/watch\/\d+/)[0];
+    }
+    // Parametri de urmărire (reclame, share-uri) nu schimbă conținutul paginii — fără ei,
+    // același link deschis din Facebook/newsletter ar fi părut altă pagină.
+    const params = new URLSearchParams(location.search);
+    [...params.keys()].forEach((k) => {
+      if (/^(utm_.+|fbclid|gclid|dclid|gbraid|wbraid|msclkid|yclid|igshid|mc_cid|mc_eid|_ga)$/i.test(k)) params.delete(k);
+    });
+    const search = params.toString();
+    return location.origin + location.pathname + (search ? "?" + search : "");
   }
 
   function el(tag, attrs = {}, ...children) {
@@ -110,6 +122,7 @@
     document.documentElement.appendChild(els.videoRoot);
     document.documentElement.appendChild(els.topbar);
     document.documentElement.appendChild(els.toolbar);
+    document.documentElement.appendChild(els.stylePopover);
     document.documentElement.appendChild(els.leaderboardPanel);
     document.documentElement.appendChild(els.minePanel);
 
@@ -131,89 +144,197 @@
     });
   }
 
-  function buildToolbar() {
-    const toolBtn = (tool, icon, title) =>
-      el(
-        "button",
-        {
-          class: "wa-tool",
-          "data-tool": tool,
-          title,
-          onclick: () => setActiveTool(tool),
-        },
-        icon
-      );
+  // Iconițe desenate (stil linie, 24×24) — înlocuiesc emoji-urile, care arătau diferit pe
+  // fiecare sistem de operare și nu se puteau colora după starea butonului.
+  const ICONS = {
+    select: '<path d="M5 3l14 7-6 2-2 6z"/>',
+    pen: '<path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M14 6l4 4"/>',
+    spray: '<rect x="6" y="9" width="8" height="12" rx="2"/><path d="M8 9V6h4v3"/><path d="M17 5h.01M20 3h.01M20 7h.01M17 9h.01"/>',
+    shape: '<circle cx="12" cy="12" r="8"/>',
+    bubble: '<path d="M4 5h16v11H9l-5 4z"/>',
+    text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
+    link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+    trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8"/>',
+    pin: '<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>',
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    grip: '<path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01"/>',
+    mark: '<path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M3 22h8"/>',
+  };
 
-    const shapeSelect = el(
-      "select",
-      {
-        onchange: (e) => (state.shapeKind = e.target.value),
-      },
-      el("option", { value: "circle" }, "Cerc"),
-      el("option", { value: "rectangle" }, "Dreptunghi"),
-      el("option", { value: "square" }, "Pătrat"),
-      el("option", { value: "triangle" }, "Triunghi"),
-      el("option", { value: "diamond" }, "Romb"),
-      el("option", { value: "star" }, "Stea"),
-      el("option", { value: "arrow" }, "Săgeată")
-    );
-
-    const colorInput = el("input", {
-      type: "color",
-      value: state.color,
-      oninput: (e) => (state.color = e.target.value),
-    });
-
-    const widthInput = el("input", {
-      type: "range",
-      min: "1",
-      max: "24",
-      value: String(state.strokeWidth),
-      oninput: (e) => (state.strokeWidth = Number(e.target.value)),
-    });
-
-    const toolbar = el(
-      "div",
-      { id: "wa-toolbar", hidden: "true" },
-      el(
-        "div",
-        { class: "wa-row" },
-        toolBtn("select", "🖱️", "Selectează / navighează normal"),
-        toolBtn("pen", "✏️", "Pen liber"),
-        toolBtn("spray", "🎨", "Spray graffiti"),
-        toolBtn("shape", "◯", "Formă (cerc/săgeată) — click-drag"),
-        toolBtn("bubble", "💬", "Bulă cu text — click pe pagină"),
-        toolBtn("text", "🔤", "Text mișcabil — click pe pagină"),
-        toolBtn("link", "🔗", "Link către alt conținut — click pe pagină")
-      ),
-      el("hr"),
-      el("label", {}, "Formă", shapeSelect),
-      el("label", {}, "Culoare", colorInput),
-      el("label", {}, "Grosime", widthInput),
-      el("button", { class: "wa-close", onclick: toggleToolbar, title: "Închide bara" }, "✕")
-    );
-
-    return toolbar;
+  function icon(name) {
+    const span = document.createElement("span");
+    span.className = "wa-ico";
+    // markup static, din ICONS de mai sus — nu conține nimic venit din pagină
+    span.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+    return span;
   }
 
-  // Bandă permanentă, sus de tot — nu se deschide/închide, e mereu vizibilă.
-  // Conține doar butonul de pornit uneltele; clasamentul e panoul separat din dreapta (buildLeaderboardPanel).
+  // Unealtă → [etichetă, tastă]. Tastele merg doar cât dock-ul e deschis (vezi key-guard.js).
+  const TOOLS = [
+    ["select", "Selectează / navighează normal", "V"],
+    ["pen", "Creion", "P"],
+    ["spray", "Spray graffiti", "S"],
+    ["shape", "Formă — click și trage", "F"],
+    ["bubble", "Bulă cu text — click pe pagină", "B"],
+    ["text", "Text mișcabil — click pe pagină", "T"],
+    ["link", "Link către alt conținut — click pe pagină", "L"],
+  ];
+  const SWATCHES = ["#89CFF0", "#F472B6", "#FACC15", "#4ADE80", "#F87171", "#FFFFFF", "#111111"];
+  const WIDTHS = [2, 4, 8, 14];
+  const SHAPES = [
+    ["circle", "Cerc"],
+    ["rectangle", "Dreptunghi"],
+    ["square", "Pătrat"],
+    ["triangle", "Triunghi"],
+    ["diamond", "Romb"],
+    ["star", "Stea"],
+    ["arrow", "Săgeată"],
+  ];
+
+  // Dock flotant (varianta A din propunerile de design): o pastilă compactă, sus pe centru,
+  // care se poate trage de mâner oriunde și își ține minte locul pe fiecare site. Stă sus
+  // (nu jos) ca să nu se bată cu comenzile player-ului pe YouTube/Netflix.
+  function buildToolbar() {
+    const btn = (cls, iconName, title, onclick, extra = {}) =>
+      el("button", { class: `wa-dock-btn ${cls}`, title, "aria-label": title, onclick, ...extra }, icon(iconName));
+
+    const grip = el("span", { class: "wa-dock-grip", title: "Trage ca să muți bara" }, icon("grip"));
+    const tools = TOOLS.map(([tool, label, key]) =>
+      btn("wa-tool", tool, `${label} (${key})`, () => setActiveTool(tool), { "data-tool": tool })
+    );
+
+    els.colorDot = el("span", { class: "wa-color-dot" });
+    els.styleBtn = el(
+      "button",
+      { class: "wa-dock-btn wa-style-btn", title: "Culoare, grosime, formă", "aria-label": "Culoare, grosime, formă", onclick: () => toggleStylePopover() },
+      els.colorDot
+    );
+    els.mineBtn = btn("wa-mine-btn", "pin", "Adnotările mele pe pagina asta", () => setMinePanelOpen(!state.myPanelOpen));
+    els.topBtn = btn("wa-top-btn", "trophy", "Arată / ascunde Topul", () => toggleLeaderboard());
+    const closeBtn = btn("wa-close", "close", "Închide bara (Esc)", () => toggleToolbar(false));
+
+    const dock = el(
+      "div",
+      { id: "wa-toolbar", hidden: "true" },
+      grip,
+      ...tools,
+      el("span", { class: "wa-dock-sep" }),
+      els.styleBtn,
+      el("span", { class: "wa-dock-sep" }),
+      els.mineBtn,
+      els.topBtn,
+      closeBtn
+    );
+    els.stylePopover = buildStylePopover();
+    wireDockDragging(dock, grip);
+    refreshStyleControls();
+    tools[0].classList.add("active"); // „Selectează” = starea de pornire (nicio unealtă activă)
+    els.topBtn.classList.add("active"); // Topul e vizibil implicit
+    return dock;
+  }
+
+  function buildStylePopover() {
+    const swatches = SWATCHES.map((c) =>
+      el("button", { class: "wa-swatch", "data-color": c, title: c, style: `background:${c}`, onclick: () => setStyle({ color: c }) })
+    );
+    const custom = el("input", {
+      type: "color",
+      class: "wa-swatch-custom",
+      title: "Altă culoare",
+      value: state.color,
+      oninput: (e) => setStyle({ color: e.target.value }),
+    });
+    const widths = WIDTHS.map((w) =>
+      el(
+        "button",
+        { class: "wa-width", "data-width": String(w), title: `Grosime ${w}`, onclick: () => setStyle({ strokeWidth: w }) },
+        el("i", { style: `width:${8 + w * 1.4}px;height:${Math.max(2, w * 0.8)}px` })
+      )
+    );
+    const shapes = SHAPES.map(([kind, label]) =>
+      el("button", { class: "wa-shape-kind", "data-shape": kind, onclick: () => setStyle({ shapeKind: kind }) }, label)
+    );
+    const pop = el(
+      "div",
+      { id: "wa-style-popover", hidden: "true" },
+      el("div", { class: "wa-pop-label" }, "Culoare"),
+      el("div", { class: "wa-pop-row" }, ...swatches, custom),
+      el("div", { class: "wa-pop-label" }, "Grosime"),
+      el("div", { class: "wa-pop-row" }, ...widths),
+      el("div", { class: "wa-pop-label" }, "Formă"),
+      el("div", { class: "wa-pop-row wa-pop-wrap" }, ...shapes)
+    );
+    stopKeysPropagating(pop);
+    return pop;
+  }
+
+  // Culoarea / grosimea / forma alese rămân aceleași pe toate site-urile, și după reload.
+  const STYLE_KEY = "wa_style";
+
+  function setStyle(patch) {
+    Object.assign(state, patch);
+    refreshStyleControls();
+    chrome.storage.local
+      .set({ [STYLE_KEY]: { color: state.color, strokeWidth: state.strokeWidth, shapeKind: state.shapeKind } })
+      .catch(() => {});
+  }
+
+  async function loadStyle() {
+    try {
+      const { [STYLE_KEY]: saved } = await chrome.storage.local.get(STYLE_KEY);
+      if (saved) Object.assign(state, saved);
+    } catch {}
+    refreshStyleControls();
+  }
+
+  function refreshStyleControls() {
+    if (!els.stylePopover) return;
+    els.colorDot.style.background = state.color;
+    const custom = els.stylePopover.querySelector(".wa-swatch-custom");
+    if (/^#[0-9a-f]{6}$/i.test(state.color)) custom.value = state.color.toLowerCase();
+    els.stylePopover.querySelectorAll(".wa-swatch").forEach((b) =>
+      b.classList.toggle("active", b.dataset.color.toLowerCase() === state.color.toLowerCase())
+    );
+    els.stylePopover.querySelectorAll(".wa-width").forEach((b) =>
+      b.classList.toggle("active", Number(b.dataset.width) === state.strokeWidth)
+    );
+    els.stylePopover.querySelectorAll(".wa-shape-kind").forEach((b) =>
+      b.classList.toggle("active", b.dataset.shape === state.shapeKind)
+    );
+  }
+
+  function toggleStylePopover(force) {
+    const open = typeof force === "boolean" ? force : els.stylePopover.hidden;
+    els.stylePopover.hidden = !open;
+    els.styleBtn.classList.toggle("active", open);
+    if (open) positionStylePopover();
+  }
+
+  function positionStylePopover() {
+    const r = els.styleBtn.getBoundingClientRect();
+    const pop = els.stylePopover;
+    const w = pop.offsetWidth || 240;
+    pop.style.left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8) + "px";
+    pop.style.top = r.bottom + 8 + "px";
+  }
+
+  function toggleLeaderboard(force) {
+    const show = typeof force === "boolean" ? force : els.leaderboardPanel.hidden;
+    els.leaderboardPanel.hidden = !show;
+    els.topBtn?.classList.toggle("active", show);
+    chrome.storage.local.set({ wa_top_hidden: !show }).catch(() => {});
+  }
+
+  // Butonul rotund de pornire (înlocuiește tab-ul vertical din stânga): stă pe jumătate
+  // ascuns pe marginea din dreapta și iese la hover (CSS). Cât e deschis dock-ul, dispare —
+  // dock-ul are propriul ✕.
   function buildTopbar() {
     els.toggleBtn = el(
       "button",
-      { id: "wa-toggle-btn", onclick: toggleToolbar, title: "Deschide/închide uneltele de adnotare" },
-      "🖍️ Adnotează"
+      { id: "wa-toggle-btn", onclick: () => toggleToolbar(), title: "Adormis — desenează pe pagină (Alt+A)", "aria-label": "Deschide Adormis" },
+      icon("mark")
     );
-    // X explicit — retrage tab-ul (și panoul "Ale mele", care acum se deschide automat
-    // odată cu tab-ul — vezi mai jos) INSTANT, la cerere. Nu mai depinde deloc de
-    // mouseleave + timer, ca să existe mereu o cale simplă, sigură, "apeși și se
-    // închide", indiferent ce altceva se întâmplă cu hover-ul.
-    els.topbarCloseBtn = el(
-      "button",
-      { id: "wa-topbar-close", onclick: closeTopbarNow, title: "Retrage extensia în stânga" },
-      "✕"
-    );
-    return el("div", { id: "wa-topbar" }, els.topbarCloseBtn, els.toggleBtn);
+    return el("div", { id: "wa-topbar" }, els.toggleBtn);
   }
 
   // Panou permanent — doar 10 bile statice, lipite de marginea din dreapta, TOP GLOBAL
@@ -252,112 +373,157 @@
     );
   }
 
-  // #wa-topbar e o pastilă flotantă independentă (poate sta oriunde pe ecran — vezi
-  // CSS), NU mai e punctul de ancorare pentru restul. Bara de unelte și panourile
-  // rămân agățate sus în pagină, la un offset fix, indiferent unde plutește pastila —
-  // altfel, cu pastila la mijlocul ecranului, panourile ar porni tot de la mijloc și
-  // ar risca să iasă din ecran jos (panoul de clasament întins pe 60vh, de ex.).
   const TOP_GAP = 16;
+  const DOCK_POS_KEY = "wa_dock_pos"; // { [hostname]: { x, y } } — poziția mutată de utilizator, per site
+  let dockPos = null; // null = implicit (sus, centrat)
+
+  async function loadDockPosition() {
+    try {
+      const { [DOCK_POS_KEY]: all } = await chrome.storage.local.get(DOCK_POS_KEY);
+      dockPos = all?.[location.hostname] || null;
+    } catch {
+      dockPos = null;
+    }
+    positionToolbar();
+  }
+
+  async function saveDockPosition() {
+    try {
+      const { [DOCK_POS_KEY]: all = {} } = await chrome.storage.local.get(DOCK_POS_KEY);
+      if (dockPos) all[location.hostname] = dockPos;
+      else delete all[location.hostname];
+      await chrome.storage.local.set({ [DOCK_POS_KEY]: all });
+    } catch {}
+  }
 
   function positionToolbar() {
-    els.toolbar.style.top = TOP_GAP + "px";
+    const dock = els.toolbar;
+    if (!dock) return;
+    if (!dockPos) {
+      dock.style.left = "50%";
+      dock.style.top = TOP_GAP + "px";
+      dock.style.transform = "translateX(-50%)";
+    } else {
+      // ținut mereu în ecran, chiar dacă fereastra s-a micșorat de când a fost mutat
+      const w = dock.offsetWidth || 420;
+      const h = dock.offsetHeight || 48;
+      dock.style.left = Math.min(Math.max(4, dockPos.x), window.innerWidth - w - 4) + "px";
+      dock.style.top = Math.min(Math.max(4, dockPos.y), window.innerHeight - h - 4) + "px";
+      dock.style.transform = "none";
+    }
+    if (els.stylePopover && !els.stylePopover.hidden) positionStylePopover();
+    if (state.myPanelOpen) positionMinePanel();
   }
 
-  // Panoul de Top stă sub bara de unelte dacă e deschisă, altfel direct sus în
-  // pagină. Recalculat la fiecare deschidere/închidere a bării, nu doar o dată la
-  // pornire, altfel s-ar suprapune peste ea cât e deschisă.
+  // Tras de mâner = mutat; dublu-click pe mâner = înapoi la locul implicit.
+  function wireDockDragging(dock, grip) {
+    let start = null;
+    grip.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const r = dock.getBoundingClientRect();
+      start = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      grip.setPointerCapture(e.pointerId);
+      dock.classList.add("wa-dragging");
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!start) return;
+      dockPos = { x: e.clientX - start.dx, y: e.clientY - start.dy };
+      positionToolbar();
+    });
+    const end = () => {
+      if (!start) return;
+      start = null;
+      dock.classList.remove("wa-dragging");
+      saveDockPosition();
+    };
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+    grip.addEventListener("dblclick", () => {
+      dockPos = null;
+      positionToolbar();
+      saveDockPosition();
+    });
+  }
+
+  // Dock-ul nu mai ocupă toată lățimea, deci Topul din dreapta stă mereu sus.
   function positionLeaderboardPanel() {
-    const anchor = state.toolbarVisible ? els.toolbar.getBoundingClientRect().bottom + 8 : TOP_GAP;
-    els.leaderboardPanel.style.top = anchor + "px";
+    els.leaderboardPanel.style.top = TOP_GAP + 4 + "px";
   }
 
-  // Panoul "Ale mele" stă simetric, lipit de marginea din stânga — aceeași logică de
-  // poziționare ca panoul de clasament din dreapta.
-  // Panoul apare acum LIPIT de tab (nu sus în pagină) — se deschide automat odată cu
-  // el, deci vizual trebuie să pară o singură bucată: aceeași centrare verticală,
-  // chiar la marginea din dreapta a tab-ului.
+  // Panoul "Ale mele" se deschide sub butonul 📍 din dock.
   function positionMinePanel() {
-    const r = els.topbar.getBoundingClientRect();
-    els.minePanel.style.left = r.right + 6 + "px";
-    els.minePanel.style.top = (r.top + r.bottom) / 2 + "px";
+    const anchor = els.mineBtn && state.toolbarVisible ? els.mineBtn.getBoundingClientRect() : null;
+    const panel = els.minePanel;
+    const w = panel.offsetWidth || 260;
+    if (anchor) {
+      panel.style.left = Math.min(Math.max(8, anchor.left + anchor.width / 2 - w / 2), window.innerWidth - w - 8) + "px";
+      panel.style.top = anchor.bottom + 8 + "px";
+    } else {
+      panel.style.left = window.innerWidth - w - 40 + "px";
+      panel.style.top = TOP_GAP + "px";
+    }
   }
 
   function toggleToolbar(forceShow) {
     state.toolbarVisible = typeof forceShow === "boolean" ? forceShow : !state.toolbarVisible;
     els.toolbar.hidden = !state.toolbarVisible;
     els.toggleBtn?.classList.toggle("active", state.toolbarVisible);
-    if (!state.toolbarVisible) setActiveTool(null);
+    if (!state.toolbarVisible) {
+      setActiveTool(null);
+      toggleStylePopover(false);
+      setMinePanelOpen(false);
+    }
+    positionToolbar();
     positionLeaderboardPanel();
-    positionMinePanel();
     refreshTopbarVisibility();
   }
 
-  // Tab-ul de sus e aproape tot ascuns implicit (vezi CSS #wa-topbar) — deschiderea
-  // se face setând `transform` direct pe `style` (nu printr-o clasă + regulă în
-  // foaia de stil a extensiei) ca să fie garantat: un stil inline câștigă mereu în
-  // fața oricărei reguli externe, indiferent de specificitate sau de cache. Golirea
-  // lui (style.transform = "") revine automat la regula CSS de bază (retras).
-  // Același model ca wireHoverReveal() (controalele de vot): apare INSTANT la
-  // mouseenter, dispare cu un mic delay la mouseleave. "Deschis" înseamnă: mouse-ul
-  // chiar stă pe tab ACUM, SAU bara de unelte e deschisă (caz în care rămâne vizibil
-  // oricât, fără timer, altfel s-ar retrage sub mouse chiar cât desenezi).
-  // Panoul "Ale mele" nu mai are buton propriu — se deschide/închide AUTOMAT, exact
-  // odată cu tab-ul (vezi setMinePanelOpen mai jos), ca să nu mai fie nevoie de un
-  // click în plus ca să-ți vezi adnotările.
-  let topbarHoverActive = false;
-  let topbarHideTimer = null;
-  const TOPBAR_HIDE_DELAY_MS = 1400;
-  const TOPBAR_OPEN_TRANSFORM = "translateY(-50%) translateX(0)";
-
+  // Cât e deschis dock-ul, butonul rotund de pornire se ascunde.
   function refreshTopbarVisibility() {
     if (!els.topbar) return;
-    const shouldStayOpen = topbarHoverActive || state.toolbarVisible;
-    if (topbarHideTimer) {
-      clearTimeout(topbarHideTimer);
-      topbarHideTimer = null;
-    }
-    if (shouldStayOpen) {
-      // Deschiderea trebuie să fie INSTANT (fără tranziția din CSS) — altfel un click
-      // dat imediat după ce mouse-ul ajunge pe tab poate rata ținta: elementul încă se
-      // mișcă spre poziția finală (0.22s), click-ul ajunge unde va fi el, nu unde e
-      // ACUM. Exact motivul pentru care primul click pe lista de adnotări părea să nu
-      // facă nimic, iar al doilea (după ce animația se terminase deja) mergea.
-      els.topbar.style.transition = "none";
-      els.topbar.style.transform = TOPBAR_OPEN_TRANSFORM;
-      setMinePanelOpen(true);
-    } else {
-      topbarHideTimer = setTimeout(() => {
-        els.topbar.style.transition = ""; // revine la tranziția lină din CSS pentru retragere
-        els.topbar.style.transform = "";
-        setMinePanelOpen(false);
-        topbarHideTimer = null;
-      }, TOPBAR_HIDE_DELAY_MS);
-    }
+    els.topbar.classList.toggle("wa-hidden", state.toolbarVisible);
   }
 
-  // Butonul ✕ din tab (sau cel din panoul "Ale mele" — fac același lucru) — retrage
-  // INSTANT, fără să mai aștepte delay-ul de hover. Închide și bara de unelte dacă
-  // era deschisă (altfel ar ține tab-ul deschis din nou, chiar după ce ai apăsat ✕).
+  // ✕ din panoul "Ale mele"
   function closeTopbarNow() {
-    topbarHoverActive = false;
-    if (state.toolbarVisible) toggleToolbar(false);
-    if (topbarHideTimer) {
-      clearTimeout(topbarHideTimer);
-      topbarHideTimer = null;
-    }
-    els.topbar.style.transform = "";
     setMinePanelOpen(false);
   }
 
+  // Scurtături (apelate din key-guard.js, care rulează în aceeași lume izolată și le
+  // oprește înainte să ajungă la site — altfel pe Netflix „F” ar intra și în fullscreen).
+  // Întoarce true dacă tasta a fost folosită de noi.
+  window.__waShortcut = (e) => {
+    if (!els.toolbar) return false;
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyA") {
+      toggleToolbar();
+      return true;
+    }
+    if (!state.toolbarVisible || e.altKey || e.ctrlKey || e.metaKey) return false;
+    if (e.key === "Escape") {
+      if (!els.stylePopover.hidden) toggleStylePopover(false);
+      else if (state.myPanelOpen) setMinePanelOpen(false);
+      else if (state.activeTool) setActiveTool(null);
+      else toggleToolbar(false);
+      return true;
+    }
+    const hit = TOOLS.find(([, , key]) => e.code === "Key" + key);
+    if (!hit || e.shiftKey) return false;
+    setActiveTool(hit[0] === state.activeTool ? "select" : hit[0]);
+    return true;
+  };
+
   function wireTopbarReveal() {
-    els.topbar.addEventListener("mouseenter", () => {
-      topbarHoverActive = true;
-      refreshTopbarVisibility();
-    });
-    els.topbar.addEventListener("mouseleave", () => {
-      topbarHoverActive = false;
-      refreshTopbarVisibility();
-    });
+    // Dock-ul și popover-ul nu se închid singure; doar click în afara popover-ului îl închide.
+    document.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (els.stylePopover.hidden) return;
+        if (els.stylePopover.contains(e.target) || els.styleBtn.contains(e.target)) return;
+        toggleStylePopover(false);
+      },
+      true
+    );
   }
 
   function setActiveTool(tool) {
@@ -372,7 +538,7 @@
     state.activeTool = nextTool;
 
     els.toolbar.querySelectorAll(".wa-tool[data-tool]").forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.tool === state.activeTool);
+      btn.classList.toggle("active", btn.dataset.tool === (state.activeTool || "select"));
     });
 
     const drawing = ["pen", "spray", "shape"].includes(state.activeTool);
@@ -385,6 +551,120 @@
   }
 
   // ---------- Vote / report / delete control ----------
+
+  // ---------- Link atașat pe orice adnotare ----------
+
+  // Orice adnotare (desen, spray, formă, text, bulă) poate avea un link în ann.data.url.
+  // Se afișează ca o pastilă mică lipită de colțul din dreapta-sus al adnotării, vizibilă
+  // pentru toată lumea; click pe ea = deschide link-ul. (Tipul "link" e deja un link.)
+  function hasAttachedLink(ann) {
+    return ann.type !== "link" && /^https?:\/\//i.test(String(ann.data?.url || ""));
+  }
+
+  function syncAttachedLink(entry) {
+    const ann = entry.ann;
+    if (!hasAttachedLink(ann)) {
+      entry.linkChip?.remove();
+      entry.linkChip = null;
+      return;
+    }
+    if (!entry.linkChip) {
+      entry.linkChip = el("a", {
+        class: "wa-link-chip",
+        target: "_blank",
+        rel: "noopener noreferrer",
+        onclick: (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.open(ann.data.url, "_blank", "noopener,noreferrer");
+        },
+      });
+      els.elements.appendChild(entry.linkChip);
+    }
+    entry.linkChip.href = ann.data.url;
+    entry.linkChip.title = ann.data.url;
+    entry.linkChip.textContent = `🔗 ${shortenUrl(ann.data.url)}`;
+    positionAttachedLink(entry);
+  }
+
+  // Pastila stă mereu în stratul normal, în coordonate de pagină (dreptunghiul real al
+  // adnotării + scroll) — merge și cât adnotarea e în stratul de fullscreen, fiindcă și
+  // stratul normal e mutat în fullscreen și compensat cu scroll-ul (vezi moveUiIntoFullscreen).
+  function positionAttachedLink(entry) {
+    const chip = entry.linkChip;
+    if (!chip) return;
+    chip.classList.remove("wa-fs-off");
+    const hidden = !entry.el || getComputedStyle(entry.el).display === "none";
+    chip.style.display = hidden ? "none" : "";
+    if (hidden) return;
+    const r = entry.el.getBoundingClientRect();
+    chip.style.left = r.right + window.scrollX - 10 + "px";
+    chip.style.top = r.top + window.scrollY - 12 + "px";
+    chip.classList.toggle("wa-dimmed", entry.el.classList.contains("wa-dimmed"));
+  }
+
+  function positionAllAttachedLinks() {
+    state.annotations.forEach((entry) => entry.linkChip && positionAttachedLink(entry));
+  }
+
+  function openAttachLinkForm(ann, clientX, clientY) {
+    document.querySelectorAll(".wa-popover").forEach((p) => p.remove());
+    const had = hasAttachedLink(ann);
+    const urlInput = el("input", { type: "url", placeholder: "https://...", value: had ? ann.data.url : "" });
+    stopKeysPropagating(urlInput);
+
+    const save = async (url) => {
+      try {
+        await WA_Api.updateAnnotation(ann.id, state.userId, { url });
+        ann.data.url = url;
+        const entry = state.annotations.get(ann.id);
+        if (entry) syncAttachedLink(entry);
+        popover.remove();
+      } catch (err) {
+        console.error("[Adormis] Nu am putut salva link-ul:", err);
+        showSaveError("Nu am putut salva link-ul — verifică serverul.");
+      }
+    };
+
+    const submitBtn = el("button", { class: "wa-submit" }, had ? "Salvează" : "Adaugă");
+    const popover = el(
+      "div",
+      {
+        class: "wa-popover",
+        style: `top:${Math.max(Math.min(clientY, window.innerHeight - 150), 8)}px; left:${Math.max(Math.min(clientX, window.innerWidth - 240), 8)}px;`,
+      },
+      el("label", {}, "Link pe adnotarea asta"),
+      urlInput,
+      el(
+        "div",
+        { class: "wa-actions" },
+        ...(had ? [el("button", { class: "wa-cancel wa-unlink", onclick: () => save("") }, "Scoate link-ul")] : []),
+        el("button", { class: "wa-cancel", onclick: () => popover.remove() }, "Anulează"),
+        submitBtn
+      )
+    );
+
+    submitBtn.onclick = async () => {
+      let url = urlInput.value.trim();
+      if (!url) return;
+      if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+      // aceeași verificare URLhaus ca la unealta Link (fail-open dacă serviciul nu răspunde)
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Se verifică...";
+      const verdict = await WA_Api.checkUrl(url);
+      submitBtn.disabled = false;
+      submitBtn.textContent = had ? "Salvează" : "Adaugă";
+      if (verdict.checked && !verdict.safe) {
+        showLinkBlockedWarning(url, verdict.threats);
+        return;
+      }
+      save(url);
+    };
+
+    uiHost().appendChild(popover);
+    clampToViewport(popover);
+    urlInput.focus();
+  }
 
   function attachVoteControl(ann, x, y) {
     const canDelete = ann.authorId === state.userId;
@@ -412,6 +692,16 @@
       await WA_Api.report(ann.id, state.userId);
       control.querySelector(".wa-report").textContent = "🚩✓";
     };
+
+    if (canDelete && ann.type !== "link") {
+      const linkBtn = el("button", { class: "wa-attach-link", title: "Adaugă / schimbă link" }, "🔗");
+      linkBtn.onclick = (e) => {
+        e.stopPropagation();
+        pauseVideoIfPlaying();
+        openAttachLinkForm(ann, e.clientX, e.clientY);
+      };
+      control.appendChild(linkBtn);
+    }
 
     if (canDelete) {
       const delBtn = el("button", { class: "wa-del", title: "Șterge" }, "🗑");
@@ -443,7 +733,7 @@
     clearTimeout(saveErrorTimer);
     if (!saveErrorToast) {
       saveErrorToast = el("div", { class: "wa-save-error" });
-      document.documentElement.appendChild(saveErrorToast);
+      uiHost().appendChild(saveErrorToast);
     }
     saveErrorToast.textContent = `⚠️ ${message}`;
     saveErrorToast.classList.add("wa-visible");
@@ -558,7 +848,7 @@
       popover.remove();
     };
 
-    document.documentElement.appendChild(popover);
+    uiHost().appendChild(popover);
     clampToViewport(popover);
   }
 
@@ -623,7 +913,7 @@
       popover.remove();
     };
 
-    document.documentElement.appendChild(popover);
+    uiHost().appendChild(popover);
     clampToViewport(popover);
   }
 
@@ -695,6 +985,8 @@
         control.style.left = ctrlOrigLeft + dx + "px";
         control.style.top = ctrlOrigTop + dy + "px";
       }
+      const entry = state.annotations.get(ann.id);
+      if (entry) positionAttachedLink(entry);
     }
 
     async function onPointerUp(e) {
@@ -704,25 +996,33 @@
       window.removeEventListener("pointerup", onPointerUp);
       if (!moved) return; // a fost doar un click (ex. pe link), nu o mutare
 
-      // re-ancorăm de la locul nou al drop-ului, ca o redimensionare/zoom viitoare
-      // să urmărească poziția nouă, nu pe cea originală de la creare
-      const newAnchor = computeAnchor(e.clientX, e.clientY);
-      ann.data.anchor = newAnchor;
-
+      // Re-ancorăm de la locul nou, ca o redimensionare/zoom viitoare să urmărească poziția
+      // nouă. Reperul (poza/video-ul) se alege după locul unde ai lăsat mouse-ul, dar
+      // poziția salvată e a PUNCTULUI DE ORIGINE al adnotării (colțul/începutul ei), nu a
+      // mouse-ului — altfel, la prima recalculare (ex. când dispare bara player-ului pe
+      // Netflix), adnotarea sărea cu distanța dintre colț și locul de unde ai apucat-o.
       let patch;
+      let originPage;
       if (isSvg) {
         const newDx = origDx + (e.pageX - startX);
         const newDy = origDy + (e.pageY - startY);
         ann.data.dx = newDx;
         ann.data.dy = newDy;
-        patch = { dx: newDx, dy: newDy, anchor: newAnchor };
+        const o = svgOriginPoint(ann);
+        originPage = o ? { x: o.x + newDx, y: o.y + newDy } : null;
+        patch = { dx: newDx, dy: newDy };
       } else {
         const newX = parseFloat(domEl.style.left);
         const newY = parseFloat(domEl.style.top);
         ann.data.x = newX;
         ann.data.y = newY;
-        patch = { x: newX, y: newY, anchor: newAnchor };
+        originPage = { x: newX, y: newY };
+        patch = { x: newX, y: newY };
       }
+      const at = originPage ? { x: originPage.x - window.scrollX, y: originPage.y - window.scrollY } : null;
+      const newAnchor = computeAnchor(e.clientX, e.clientY, ann._fit || 1, at);
+      ann.data.anchor = newAnchor;
+      patch.anchor = newAnchor;
       try {
         await WA_Api.updateAnnotation(ann.id, state.userId, patch);
       } catch (err) {
@@ -799,6 +1099,7 @@
       entry.el.classList.toggle("wa-dimmed", dimmed);
     }
     if (entry.control) entry.control.style.display = hidden ? "none" : "";
+    positionAttachedLink(entry);
   }
 
   function applyVoteFilter() {
@@ -817,6 +1118,7 @@
     if (!entry) return;
     entry.el?.remove();
     entry.control?.remove();
+    entry.linkChip?.remove();
     state.annotations.delete(id);
     renderSidebar();
     if (state.myPanelOpen) renderMineList();
@@ -824,6 +1126,7 @@
 
   function registerAnnotation(ann, domEl, control) {
     state.annotations.set(ann.id, { ann, el: domEl, control });
+    syncAttachedLink(state.annotations.get(ann.id));
     applyVisibility(state.annotations.get(ann.id));
     wireVideoRange(ann, domEl, control);
     const handles = attachTransformHandles(ann, domEl); // null dacă nu ești autorul
@@ -840,19 +1143,47 @@
   // (pen/spray/formă) — TOATE trei combinate într-un singur "transform", ca zoom-ul
   // și rotirea să funcționeze corect chiar și pe o adnotare deja mutată din loc.
   function applySvgTransform(domEl, ann) {
-    const dx = ann.data.dx || 0;
-    const dy = ann.data.dy || 0;
+    domEl.style.transform = svgTransformFor(domEl, ann, ann.data.dx || 0, ann.data.dy || 0);
+  }
+
+  // ann._fit (doar client-side, nu se salvează) = cât de mare e ACUM imaginea/video-ul de
+  // reper față de momentul desenării (vezi resolveAnchor). Desenul se scalează cu el în jurul
+  // punctului de ancoră, ca să rămână peste aceeași porțiune din imagine când pagina se
+  // micșorează/mărește. Originea CSS e centrul formei (fill-box), deci compensăm cu un
+  // translate: punctul de ancoră O ajunge exact la poziția rezolvată, restul se strânge spre el.
+  function svgTransformFor(domEl, ann, dx, dy) {
     const rotate = ann.data.rotate || 0;
     const scale = ann.data.scale || 1;
-    domEl.style.transform = `translate(${dx}px, ${dy}px) rotate(${rotate}deg) scale(${scale})`;
+    const fit = ann._fit || 1;
+    if (fit !== 1) {
+      const origin = svgOriginPoint(ann);
+      // getBBox dă 0 cât elementul e ascuns (display:none, ex. în afara intervalului video),
+      // așa că păstrăm ultima cutie validă — geometria desenului nu se schimbă după creare
+      if (!ann._box) {
+        try {
+          const b = domEl.getBBox();
+          if (b.width || b.height) ann._box = { x: b.x, y: b.y, width: b.width, height: b.height };
+        } catch {}
+      }
+      const box = ann._box;
+      if (origin && box) {
+        dx += (fit - 1) * (box.x + box.width / 2 - origin.x);
+        dy += (fit - 1) * (box.y + box.height / 2 - origin.y);
+      }
+    }
+    return `translate(${dx}px, ${dy}px) scale(${fit}) rotate(${rotate}deg) scale(${scale})`;
   }
 
   // La fel, pentru elemente DOM obișnuite (text/bulă/link) — acolo poziția e deja pe
   // left/top (nu pe transform), deci aici e nevoie doar de rotate + scale.
+  // Și aici se aplică ann._fit, cu pivotul în colțul stânga-sus (= punctul de ancoră), nu în centru.
   function applyDomTransform(domEl, ann) {
     const rotate = ann.data.rotate || 0;
     const scale = ann.data.scale || 1;
-    domEl.style.transform = `rotate(${rotate}deg) scale(${scale})`;
+    const fit = ann._fit || 1;
+    // procente = relativ la mărimea elementului, deci merge și cât e ascuns (display:none)
+    const t = (fit - 1) * 50;
+    domEl.style.transform = `translate(${t}%, ${t}%) scale(${fit}) rotate(${rotate}deg) scale(${scale})`;
   }
 
   // Mânere de zoom/rotire — doar pentru autor, ca la mutare/editare. Colțul dreapta-jos
@@ -904,6 +1235,8 @@
       if (isSvg) applySvgTransform(domEl, ann);
       else applyDomTransform(domEl, ann);
       handles.positionHandles();
+      const entry = state.annotations.get(ann.id);
+      if (entry) positionAttachedLink(entry);
     }
 
     function startDrag(handleEl, onMove) {
@@ -1047,7 +1380,26 @@
   // repeta la fiecare navigare SPA (schimbare de video pe YouTube), care golește și
   // reumple state.annotations prin onPageNavigated(). Verificarea e ieftină
   // (`length` întâi) — nu costă nimic cât timp nu așteaptă nimic.
-  new MutationObserver(() => {
+  // Pagini care își încarcă bucăți din conținut pe parcurs (meniul Netflix, galerii, feed-uri):
+  // reperele pot apărea/muta fără niciun resize — recalculăm, rar (debounce), doar dacă avem ce.
+  // Throttle, nu debounce: pe pagini care se modifică încontinuu (trailer, contoare), un
+  // debounce n-ar mai apuca să ruleze niciodată.
+  let mutationRepositionTimer = null;
+  function repositionAfterMutations() {
+    if (mutationRepositionTimer) return;
+    mutationRepositionTimer = setTimeout(() => {
+      mutationRepositionTimer = null;
+      if (els.root && state.annotations.size) {
+        repositionAnchoredAnnotations();
+        repositionVideoLayerAnnotations(); // altfel, în fullscreen, cele din stratul-geamăn primeau coordonate de pagină
+      }
+    }, 400);
+  }
+
+  new MutationObserver((mutations) => {
+    if (els.root && !mutations.every((m) => els.root.contains(m.target) || els.videoRoot?.contains(m.target))) {
+      repositionAfterMutations();
+    }
     watchVideoResize(); // dacă <video>-ul s-a schimbat/a apărut, prindem imediat mărimea lui reală
     if (!pendingVideoWire.length || !getMainVideo()) return;
     pendingVideoWire.splice(0).forEach(({ ann, domEl, control }) => wireVideoRange(ann, domEl, control));
@@ -1093,9 +1445,12 @@
   document.addEventListener("fullscreenchange", () => {
     if (document.fullscreenElement) {
       enterVideoFullscreen();
+      moveUiIntoFullscreen();
     } else {
+      moveUiOutOfFullscreen();
       exitVideoFullscreen();
     }
+    positionToolbar();
     setTimeout(() => {
       if (!els.root) return;
       repositionAnchoredAnnotations();
@@ -1109,6 +1464,53 @@
   // arbitrari ca overlay, deci n-avem cum să-i suprapunem ceva vizibil; site-urile
   // care fac fullscreen pe <video> direct, nu pe un container-wrapper, rămân cu
   // limitarea veche: bula nu se vede cât ești fullscreen, doar seek-ul pe video).
+  // Unde se atașează UI-ul extensiei (dock, meniuri, bare „OK, gata”, toast-uri): cât ține
+  // un fullscreen peste video, ÎNĂUNTRUL elementului din fullscreen — altfel nu se vede.
+  function uiHost() {
+    return (fullscreenUiActive && document.fullscreenElement) || document.documentElement;
+  }
+
+  // Mută UI-ul și stratul de desen în fullscreen (și înapoi), ca să poți desena direct peste
+  // film. Adnotările care NU țin de video (de pe restul paginii) se ascund cât ține
+  // fullscreen-ul — locul lor nu se vede oricum. Cele legate de video sunt deja afișate prin
+  // stratul-geamăn (enterVideoFullscreen); aici rămân doar cele noi, desenate în fullscreen.
+  let fullscreenUiActive = false;
+  const FS_UI = () => [els.topbar, els.toolbar, els.stylePopover, els.minePanel, els.leaderboardPanel];
+
+  function moveUiIntoFullscreen() {
+    const fsEl = document.fullscreenElement;
+    if (fullscreenUiActive || !fsEl || !isFullscreenOverVideo()) return;
+    fullscreenUiActive = true;
+    [...els.svg.children, ...els.elements.children].forEach((c) => c.classList.add("wa-fs-off"));
+    fsEl.appendChild(els.root);
+    FS_UI().forEach((n) => fsEl.appendChild(n));
+    document.querySelectorAll(".wa-spray-confirm, .wa-popover, .wa-save-error").forEach((n) => fsEl.appendChild(n));
+    compensateFullscreenScroll();
+    positionAllAttachedLinks();
+  }
+
+  function moveUiOutOfFullscreen() {
+    if (!fullscreenUiActive) return;
+    fullscreenUiActive = false;
+    const html = document.documentElement;
+    html.appendChild(els.root);
+    FS_UI().forEach((n) => html.appendChild(n));
+    document.querySelectorAll(".wa-spray-confirm, .wa-popover, .wa-save-error").forEach((n) => html.appendChild(n));
+    els.root.style.transform = "";
+    els.root.style.minHeight = "";
+    els.root.querySelectorAll(".wa-fs-off").forEach((c) => c.classList.remove("wa-fs-off"));
+    positionAllAttachedLinks();
+  }
+
+  // Elementul din fullscreen e „fixed” la colțul ecranului, iar adnotările au coordonate de
+  // pagină (cu scroll inclus) — deplasăm tot stratul cu scroll-ul curent ca să cadă exact.
+  function compensateFullscreenScroll() {
+    if (!fullscreenUiActive) return;
+    els.root.style.transform = `translate(${-window.scrollX}px, ${-window.scrollY}px)`;
+    els.root.style.minHeight = window.scrollY + window.innerHeight + "px";
+  }
+  window.addEventListener("scroll", compensateFullscreenScroll, { passive: true });
+
   function isFullscreenOverVideo() {
     const video = getMainVideo();
     const fsEl = document.fullscreenElement;
@@ -1121,11 +1523,26 @@
   // restaurăm exact locul din DOM al fiecărui element mutat, la ieșirea din fullscreen.
   const movedIntoVideoLayer = [];
 
+  // Legată de video = are interval de timp SAU e desenată direct peste <video> (ancora e
+  // video-ul). Pe Netflix/YouTube lumea se uită mai mult în fullscreen — un desen pus peste
+  // film, chiar fără interval, trebuie să se vadă și acolo, nu doar în fereastră.
+  function isVideoBound(ann) {
+    if (ann.data?.videoRange) return true;
+    const sel = ann.data?.anchor?.selector;
+    if (!sel) return false;
+    const video = getMainVideo();
+    try {
+      return !!video && document.querySelector(sel) === video;
+    } catch {
+      return false;
+    }
+  }
+
   function enterVideoFullscreen() {
     if (videoLayerActive || !isFullscreenOverVideo()) return;
 
     state.annotations.forEach((entry) => {
-      if (!entry.ann.data?.videoRange || !entry.el) return; // doar adnotările legate de video
+      if (!isVideoBound(entry.ann) || !entry.el) return; // doar adnotările legate de video
       const targetLayer = entry.el instanceof SVGElement ? els.videoSvg : els.videoElements;
       movedIntoVideoLayer.push({
         domEl: entry.el,
@@ -1180,7 +1597,7 @@
 
     state.annotations.forEach((entry) => {
       const ann = entry.ann;
-      if (!ann.data?.videoRange || !ann.data.anchor || !entry.el) return;
+      if (!ann.data.anchor || !entry.el || !movedIntoVideoLayer.some((m) => m.domEl === entry.el)) return;
       const resolved = resolveAnchor(ann.data.anchor); // document-relative, ca de obicei
       if (!resolved) return;
 
@@ -1190,9 +1607,8 @@
         if (!origin) return;
         const dx = resolved.x - scrollX - origin.x;
         const dy = resolved.y - scrollY - origin.y;
-        const rotate = ann.data.rotate || 0;
-        const scale = ann.data.scale || 1;
-        entry.el.style.transform = `translate(${dx}px, ${dy}px) rotate(${rotate}deg) scale(${scale})`;
+        ann._fit = resolved.fit;
+        entry.el.style.transform = svgTransformFor(entry.el, ann, dx, dy);
         if (entry.control) {
           entry.control.style.left = origin.x + dx + "px";
           entry.control.style.top = origin.y + dy + "px";
@@ -1209,12 +1625,15 @@
         const newTop = resolved.y - scrollY;
         entry.el.style.left = newLeft + "px";
         entry.el.style.top = newTop + "px";
+        ann._fit = resolved.fit;
+        applyDomTransform(entry.el, ann);
         if (entry.control) {
           entry.control.style.left = newLeft + offsetX + "px";
           entry.control.style.top = newTop + offsetY + "px";
         }
       }
     });
+    positionAllAttachedLinks();
   }
 
   // ---------- Pen tool ----------
@@ -1238,7 +1657,7 @@
         el("button", { class: "wa-spray-ok", onclick: () => finishSession() }, "✓ OK, gata"),
         el("button", { class: "wa-spray-cancel", onclick: () => cancelSession() }, "✕ Anulează")
       );
-      document.documentElement.appendChild(confirmBar);
+      uiHost().appendChild(confirmBar);
     }
 
     function hideConfirmBar() {
@@ -1262,7 +1681,7 @@
             data: { d, color: state.color, strokeWidth: state.strokeWidth, anchor },
             authorId: state.userId,
           });
-          const firstPoint = d.match(/M ([\d.]+) ([\d.]+)/);
+          const firstPoint = d.match(/M (-?[\d.]+(?:e-?\d+)?) (-?[\d.]+(?:e-?\d+)?)/);
           const control = attachVoteControl(ann, Number(firstPoint[1]), Number(firstPoint[2]));
           makeMovable(ann, path, control);
           makeStyleEditableOnDblClick(ann, path);
@@ -1335,6 +1754,7 @@
   // Spray-ul e o sesiune: poți da spray de mai multe ori (ridici mâna de pe mouse,
   // dai iar spray, tot pe aceeași adnotare) — se salvează abia când apeși OK.
   function initSprayTool() {
+    let sprayOrigin = null; // punctul exact al click-ului (primul punct e împrăștiat aleator în jurul lui)
     let spraying = false; // în timpul unei singure curse (mouse apăsat)
     let sessionActive = false; // sesiune deschisă, așteaptă OK/Anulează
     let group = null;
@@ -1370,7 +1790,7 @@
         el("button", { class: "wa-spray-ok", onclick: () => finishSession() }, "✓ OK, gata"),
         el("button", { class: "wa-spray-cancel", onclick: () => cancelSession() }, "✕ Anulează")
       );
-      document.documentElement.appendChild(confirmBar);
+      uiHost().appendChild(confirmBar);
     }
 
     function hideConfirmBar() {
@@ -1391,7 +1811,7 @@
           const ann = await WA_Api.createAnnotation({
             url: pageKey(),
             type: "spray",
-            data: { dots, color: state.color, anchor },
+            data: { dots, color: state.color, anchor, origin: sprayOrigin },
             authorId: state.userId,
           });
           const control = attachVoteControl(ann, dots[0].cx, dots[0].cy);
@@ -1429,6 +1849,7 @@
       if (!sessionActive) {
         sessionActive = true;
         anchor = computeAnchor(e.clientX, e.clientY);
+        sprayOrigin = pagePoint(e);
         dots = [];
         group = svgEl("g");
         els.svg.appendChild(group);
@@ -1586,7 +2007,7 @@
         el("button", { class: "wa-spray-ok", onclick: () => finishPending() }, "✓ OK, gata"),
         el("button", { class: "wa-spray-cancel", onclick: () => cancelPending() }, "✕ Anulează")
       );
-      document.documentElement.appendChild(confirmBar);
+      uiHost().appendChild(confirmBar);
     }
 
     function hideConfirmBar() {
@@ -1715,7 +2136,7 @@
       el("button", { class: "wa-spray-ok" }, "✓ OK, gata"),
       el("button", { class: "wa-spray-cancel" }, "✕ Anulează")
     );
-    document.documentElement.appendChild(confirmBar);
+    uiHost().appendChild(confirmBar);
 
     function cleanup() {
       confirmBar.remove();
@@ -1792,7 +2213,7 @@
       el("button", { class: "wa-spray-ok" }, "✓ OK, gata"),
       el("button", { class: "wa-spray-cancel" }, "✕ Anulează")
     );
-    document.documentElement.appendChild(confirmBar);
+    uiHost().appendChild(confirmBar);
 
     function cleanup() {
       confirmBar.remove();
@@ -1941,7 +2362,7 @@
       popover.remove();
     };
 
-    document.documentElement.appendChild(popover);
+    uiHost().appendChild(popover);
     clampToViewport(popover);
     urlInput.focus();
   }
@@ -1976,7 +2397,7 @@
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) backdrop.remove();
     });
-    document.documentElement.appendChild(backdrop);
+    uiHost().appendChild(backdrop);
   }
 
   function shortenUrl(url) {
@@ -2045,6 +2466,27 @@
 
   // ---------- Video bubbles ----------
 
+  const IS_NETFLIX = /(^|\.)netflix\.com$/.test(location.hostname);
+
+  // Netflix NU suportă video.currentTime = ... (player-ul se oprește cu eroarea M7375) —
+  // acolo cerem player-ului lor să sară, prin page-bridge.js (rulează în lumea paginii,
+  // singura care vede API-ul `netflix`). Peste tot altundeva, direct pe <video>.
+  function seekVideo(video, seconds) {
+    if (IS_NETFLIX) {
+      window.postMessage({ source: "adormis", type: "seek", seconds }, location.origin);
+      return;
+    }
+    if (video) video.currentTime = seconds;
+  }
+
+  function pauseVideo(video) {
+    if (IS_NETFLIX) {
+      window.postMessage({ source: "adormis", type: "pause" }, location.origin);
+      return;
+    }
+    video?.pause();
+  }
+
   function getMainVideo() {
     return document.querySelector("video");
   }
@@ -2082,7 +2524,7 @@
   // treacă de intervalul pe care-l editezi cât timp te uiți la formular.
   function pauseVideoIfPlaying() {
     const video = getMainVideo();
-    if (video && !video.paused) video.pause();
+    if (video && !video.paused) pauseVideo(video);
   }
 
   // Unealta dedicată "Bulă video" a fost scoasă — era un duplicat al Bulă + "Legat de
@@ -2151,7 +2593,7 @@
         });
         applyStoredOffset(path, ann);
         els.svg.appendChild(path);
-        const m = ann.data.d.match(/M ([\d.]+) ([\d.]+)/);
+        const m = ann.data.d.match(/M (-?[\d.]+(?:e-?\d+)?) (-?[\d.]+(?:e-?\d+)?)/);
         const control = attachVoteControl(
           ann,
           Number(m?.[1] || 0) + (ann.data.dx || 0),
@@ -2310,7 +2752,7 @@
       el("button", { class: "wa-lb-detail-close", onclick: () => detail.remove() }, "✕"),
       ...rows
     );
-    document.documentElement.appendChild(detail);
+    uiHost().appendChild(detail);
     clampToViewport(detail);
 
     if (onThisPage) {
@@ -2319,9 +2761,9 @@
         // Rămâne vizibilă și în fullscreen (vezi enterVideoFullscreen) — nu scoatem
         // userul de-acolo doar ca să sară la un moment din video.
         const video = getMainVideo();
-        if (video) video.currentTime = ann.data.videoRange.start;
+        seekVideo(video, ann.data.videoRange.start);
         entry?.el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-      } else if (document.fullscreenElement) {
+      } else if (document.fullscreenElement && !(videoLayerActive && isVideoBound(ann))) {
         // Adnotare statică, invizibilă cât ceva e în fullscreen (vezi locateMine) —
         // ieșim noi înșine, altfel scroll-ul se întâmplă "pe ascuns".
         document.exitFullscreen().finally(() =>
@@ -2350,6 +2792,7 @@
     if (state.myPanelOpen === open) return; // deja în starea cerută, nu mai facem nimic
     state.myPanelOpen = open;
     els.minePanel.hidden = !open;
+    els.mineBtn?.classList.toggle("active", open);
     if (open) {
       positionMinePanel();
       renderMineList();
@@ -2406,7 +2849,7 @@
 
     if (isVideoAnn) {
       const video = getMainVideo();
-      if (video) video.currentTime = ann.data.videoRange.start;
+      seekVideo(video, ann.data.videoRange.start);
       // Adnotările legate de video rămân vizibile și în fullscreen (vezi
       // enterVideoFullscreen) — nu are rost s-o scoatem pe utilizator de-acolo.
       locateMineStep2(entry);
@@ -2418,7 +2861,7 @@
     // scrollIntoView ar derula pagina "pe ascuns", fără ca userul să vadă vreo
     // schimbare până iese manual din fullscreen (exact bug-ul raportat). Ieșim noi
     // înșine din fullscreen înainte de scroll+flash, ca să chiar se vadă.
-    if (document.fullscreenElement) {
+    if (document.fullscreenElement && !(videoLayerActive && isVideoBound(ann))) {
       document.exitFullscreen().finally(() => setTimeout(() => locateMineStep2(entry), 100));
     } else {
       locateMineStep2(entry);
@@ -2515,6 +2958,22 @@
     return found;
   }
 
+  // ID-uri create la fiecare încărcare (Netflix: rânduri cu ID base64 de sesiune, React
+  // useId ":r1:", Ember/ExtJS/YUI) — un selector cu ele nu mai găsește nimic data viitoare.
+  function isGeneratedId(id) {
+    return id.length > 40 || /^:r[0-9a-z]+:$/i.test(id) || /^(ember|ext-gen|yui_)\d+/.test(id);
+  }
+
+  // Calea (fără host și query) a pozei: pe CDN-uri hostul și semnătura din query se schimbă,
+  // calea rămâne aceeași pentru aceeași imagine.
+  function imagePath(img) {
+    try {
+      return new URL(img.currentSrc || img.src).pathname;
+    } catch {
+      return "";
+    }
+  }
+
   // Selector CSS rezonabil de stabil: ID unic dacă există (pe el sau pe un strămoș), altfel
   // o cale de tip tag:nth-of-type până la acel strămoș sau până la <body>.
   function buildSelector(elm) {
@@ -2523,7 +2982,7 @@
     let node = elm;
     let depth = 0;
     while (node && node.nodeType === 1 && node !== document.body && depth < 12) {
-      if (node.id) {
+      if (node.id && !isGeneratedId(node.id)) {
         const idSel = `#${CSS.escape(node.id)}`;
         if (document.querySelectorAll(idSel).length === 1) {
           parts.unshift(idSel);
@@ -2541,8 +3000,64 @@
     return parts.length ? "body > " + parts.join(" > ") : null;
   }
 
+  // Elemente al căror conținut se scalează odată cu cutia lor (o poză micșorată de layout
+  // arată tot motorul, doar mai mic) — doar pentru ele desenul se scalează la resize.
+  // La text/containere obișnuite, lățimea se schimbă dar conținutul nu, deci acolo nu scalăm.
+  const SCALABLE_TAGS = new Set(["img", "video", "canvas", "svg", "picture", "iframe", "embed", "object"]);
+
+  // Prima poză/video/canvas din stiva de sub punct, chiar dacă deasupra e un strat
+  // transparent al site-ului (ex. lupa de zoom a galeriei de produs de pe eMAG).
+  function scalableUnderPoint(clientX, clientY) {
+    const hit = document
+      .elementsFromPoint(clientX, clientY)
+      .find((n) => SCALABLE_TAGS.has(n.localName) && !els.root.contains(n) && !els.videoRoot?.contains(n));
+    if (hit) return hit;
+    // elementsFromPoint sare peste elementele cu pointer-events: none — așa sunt video-ul și
+    // copertele din meniul Netflix. Căutăm atunci în strămoșii elementului de deasupra cea mai
+    // apropiată poză/video vizibilă care acoperă punctul (aceeași componentă a paginii).
+    const contains = (n) => {
+      const r = n.getBoundingClientRect();
+      return r.width >= 2 && r.height >= 2 && clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+    };
+    const selector = [...SCALABLE_TAGS].join(",");
+    for (let node = elementUnderPoint(clientX, clientY); node && node !== document.body; node = node.parentElement) {
+      const found = [...node.querySelectorAll(selector)].find(
+        (n) => contains(n) && getComputedStyle(n).visibility !== "hidden" && !els.root.contains(n)
+      );
+      if (found) return found;
+    }
+    return null;
+  }
+
+  // Dreptunghiul în care se vede EFECTIV poza/cadrul video, nu cutia elementului: cu
+  // object-fit: contain (implicit la <video>, des folosit în galeriile de produs) imaginea
+  // stă centrată cu margini goale, iar raportul lor se schimbă când layout-ul trece pe mobil.
+  function mediaContentRect(elm) {
+    const rect = elm.getBoundingClientRect();
+    const nw = elm.naturalWidth || elm.videoWidth;
+    const nh = elm.naturalHeight || elm.videoHeight;
+    if (!nw || !nh || rect.width < 2 || rect.height < 2) return rect;
+    const fit = getComputedStyle(elm).objectFit;
+    if (fit !== "contain" && fit !== "cover" && fit !== "scale-down") return rect; // fill: umple cutia
+    let k = fit === "cover" ? Math.max(rect.width / nw, rect.height / nh) : Math.min(rect.width / nw, rect.height / nh);
+    if (fit === "scale-down") k = Math.min(k, 1);
+    const w = nw * k;
+    const h = nh * k;
+    // object-position: presupunem centrat (valoarea implicită)
+    const left = rect.left + (rect.width - w) / 2;
+    const top = rect.top + (rect.height - h) / 2;
+    return { left, top, right: left + w, bottom: top + h, width: w, height: h };
+  }
+
   // La creare: reperul e elementul real de sub click + poziția relativă (%) în interiorul lui.
-  function computeAnchor(clientX, clientY) {
+  // Pentru poze/video se salvează și lățimea lor `w` — raportul față de lățimea de acum e
+  // factorul cu care scalăm desenul. `fit` = scala la care e afișat ACUM desenul (la re-ancorare
+  // după mutare), ca lățimea salvată să corespundă mărimii lui „naturale”.
+  // `at` (opțional, coordonate de ecran): punctul pentru care se calculează poziția relativă,
+  // dacă diferă de punctul după care se alege reperul — vezi mutarea din makeMovable.
+  function computeAnchor(clientX, clientY, fit = 1, at = null) {
+    const px = at ? at.x : clientX;
+    const py = at ? at.y : clientY;
     // Peste un video, ne ancorăm DIRECT de <video> (mereu prezent, stabil), nu de orice
     // e vizual deasupra în acel moment — pe YouTube/Netflix acolo pot fi straturi
     // temporare (bara de control, gradientul de hover) care dispar/reapar, și dacă
@@ -2550,7 +3065,7 @@
     // blocată pe poziția veche cât timp restul paginii se mișcă.
     const video = getMainVideo();
     if (video) {
-      const vRect = video.getBoundingClientRect();
+      const vRect = mediaContentRect(video);
       const overVideo =
         clientX >= vRect.left && clientX <= vRect.right && clientY >= vRect.top && clientY <= vRect.bottom;
       if (overVideo && vRect.width >= 2 && vRect.height >= 2) {
@@ -2558,23 +3073,28 @@
         if (selector) {
           return {
             selector,
-            offsetXPct: ((clientX - vRect.left) / vRect.width) * 100,
-            offsetYPct: ((clientY - vRect.top) / vRect.height) * 100,
+            offsetXPct: ((px - vRect.left) / vRect.width) * 100,
+            offsetYPct: ((py - vRect.top) / vRect.height) * 100,
+            w: vRect.width / fit,
           };
         }
       }
     }
 
-    const target = elementUnderPoint(clientX, clientY);
+    const media = scalableUnderPoint(clientX, clientY);
+    const target = media || elementUnderPoint(clientX, clientY);
     const selector = buildSelector(target);
     if (!selector) return null;
-    const rect = target.getBoundingClientRect();
+    const rect = media ? mediaContentRect(media) : target.getBoundingClientRect();
     if (rect.width < 2 || rect.height < 2) return null;
-    return {
+    const anchor = {
       selector,
-      offsetXPct: ((clientX - rect.left) / rect.width) * 100,
-      offsetYPct: ((clientY - rect.top) / rect.height) * 100,
+      offsetXPct: ((px - rect.left) / rect.width) * 100,
+      offsetYPct: ((py - rect.top) / rect.height) * 100,
     };
+    if (media) anchor.w = rect.width / fit;
+    if (media?.localName === "img") anchor.src = imagePath(media) || undefined;
+    return anchor;
   }
 
   // La afișare/redimensionare: unde e reperul ACUM → poziția (în pagină) unde trebuie desenată adnotarea.
@@ -2586,12 +3106,21 @@
     } catch {
       return null;
     }
+    // Poză: dacă selectorul nu mai nimerește aceeași imagine (layout schimbat, rânduri
+    // reordonate — ex. meniul Netflix), o căutăm după adresa ei.
+    if (anchor.src && !(target?.localName === "img" && imagePath(target) === anchor.src)) {
+      target = [...document.images].find((i) => i.getBoundingClientRect().width > 1 && imagePath(i) === anchor.src) || null;
+    }
     if (!target) return null;
-    const rect = target.getBoundingClientRect();
+    // ancorele noi (cu `w`) sunt relative la imaginea vizibilă; cele vechi, la cutia elementului
+    const rect = anchor.w > 0 ? mediaContentRect(target) : target.getBoundingClientRect();
     if (rect.width < 1 && rect.height < 1) return null; // devenit invizibil / display:none
+    // adnotările vechi (fără `w`) sau ancorate de text rămân la mărimea lor
+    const fit = anchor.w > 0 && rect.width >= 2 ? Math.min(Math.max(rect.width / anchor.w, 0.1), 10) : 1;
     return {
       x: rect.left + window.scrollX + (anchor.offsetXPct / 100) * rect.width,
       y: rect.top + window.scrollY + (anchor.offsetYPct / 100) * rect.height,
+      fit,
     };
   }
 
@@ -2599,11 +3128,14 @@
   // nu au un singur x,y ca text/bulă/link, deci calculăm deplasarea față de acest punct.
   function svgOriginPoint(ann) {
     if (ann.type === "pen") {
-      const m = ann.data.d.match(/M ([\d.]+) ([\d.]+)/);
+      const m = ann.data.d.match(/M (-?[\d.]+(?:e-?\d+)?) (-?[\d.]+(?:e-?\d+)?)/);
       if (!m) return null;
       return { x: Number(m[1]), y: Number(m[2]) };
     }
     if (ann.type === "spray") {
+      // ancora s-a calculat din punctul click-ului, nu din primul punct (care e deplasat
+      // aleator) — altfel desenul „sărea” câțiva pixeli la prima repoziționare
+      if (ann.data.origin) return { x: ann.data.origin.x, y: ann.data.origin.y };
       const first = ann.data.dots[0];
       return first ? { x: first.cx, y: first.cy } : null;
     }
@@ -2621,7 +3153,13 @@
     state.annotations.forEach(({ ann, el: domEl, control }) => {
       if (!ann.data.anchor) return;
       const resolved = resolveAnchor(ann.data.anchor);
+      // Desen pus pe o poză care nu (mai) e pe pagină — ex. coperta unui film din meniul
+      // Netflix, încă neîncărcată sau în alt rând: ascuns, nu lăsat peste altă copertă.
+      const orphan = !resolved && !!ann.data.anchor.src;
+      domEl.classList.toggle("wa-orphan", orphan);
+      control?.classList.toggle("wa-orphan", orphan);
       if (!resolved) return; // reperul a dispărut de pe pagină — rămânem la ultima poziție cunoscută
+      ann._fit = resolved.fit;
 
       const isSvg = domEl instanceof SVGElement;
       if (isSvg) {
@@ -2645,8 +3183,10 @@
         ann.data.y = resolved.y;
         domEl.style.left = resolved.x + "px";
         domEl.style.top = resolved.y + "px";
+        applyDomTransform(domEl, ann);
       }
     });
+    positionAllAttachedLinks();
   }
 
   // ---------- Init ----------
@@ -2718,11 +3258,12 @@
   // — altfel ar reapărea enervant pe fiecare domeniu nou vizitat.
   const ONBOARDING_KEY = "wa_onboarding_seen";
 
+  // Balonaș în stânga butonului rotund (care stă pe marginea din dreapta), cu săgeata spre el.
   function showOnboardingCallout(text) {
     const callout = el("div", { class: "wa-onboarding-callout" }, text);
-    document.documentElement.appendChild(callout);
-    const r = els.topbar.getBoundingClientRect();
-    callout.style.left = r.right + 14 + "px";
+    uiHost().appendChild(callout);
+    const r = els.toggleBtn.getBoundingClientRect();
+    callout.style.left = r.left - 14 - callout.offsetWidth + "px";
     callout.style.top = (r.top + r.bottom) / 2 + "px";
     requestAnimationFrame(() => callout.classList.add("wa-visible"));
     return callout;
@@ -2735,19 +3276,14 @@
     // să n-o pornească a doua oară.
     await chrome.storage.local.set({ [ONBOARDING_KEY]: true });
 
-    els.topbar.style.transform = TOPBAR_OPEN_TRANSFORM; // forțează tab-ul complet la vedere
+    els.topbar.classList.add("wa-peek"); // scoate butonul complet din margine
     setTimeout(() => {
-      const intro = showOnboardingCallout("🖍️ Aici e extensia Adormis!");
+      const hint = showOnboardingCallout("Aici e Adormis! Apasă (sau Alt+A) ca să desenezi și să comentezi pe pagină.");
       setTimeout(() => {
-        intro.remove();
-        els.topbar.style.transform = "";
-        refreshTopbarVisibility(); // revine la starea reală (rămâne deschis doar dacă mouse-ul chiar e pe el sau ceva e activ)
-        setTimeout(() => {
-          const hint = showOnboardingCallout("👈 Ca să accesezi extensia, adu mouse-ul aici, în stânga.");
-          setTimeout(() => hint.remove(), 3500);
-        }, 300); // așteaptă tranziția de retragere a tab-ului înainte să poziționăm indiciul
-      }, 2500);
-    }, 300); // așteaptă tranziția de deschidere forțată înainte să poziționăm balonașul
+        hint.remove();
+        els.topbar.classList.remove("wa-peek");
+      }, 4500);
+    }, 300); // așteaptă tranziția de ieșire înainte să poziționăm balonașul
   }
 
   (async function init() {
@@ -2760,6 +3296,12 @@
     initBubbleTool();
     initLinkTool();
     wireTopbarReveal();
+    loadDockPosition();
+    loadStyle();
+    chrome.storage.local
+      .get("wa_top_hidden")
+      .then(({ wa_top_hidden }) => wa_top_hidden && toggleLeaderboard(false))
+      .catch(() => {});
     watchForNavigation();
     runOnboarding();
     await loadExisting();
