@@ -68,14 +68,18 @@
     return res.json();
   }
 
-  async function report(id, reporterId) {
+  // reason: illegal | hate | harassment | personal_data | sexual | spam | copyright | other
+  async function report(id, reporterId, { reason, details, goodFaith }) {
     const b = await base();
     const res = await fetch(`${b}/api/annotations/${id}/report`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reporterId }),
+      body: JSON.stringify({ reporterId, reason, details, goodFaith }),
     });
-    if (!res.ok) throw new Error(`Raportare eșuată (${res.status})`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Raportare eșuată (${res.status})`);
+    }
     return res.json();
   }
 

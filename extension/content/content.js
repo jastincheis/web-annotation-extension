@@ -846,6 +846,62 @@
     urlInput.focus();
   }
 
+  // Raportare motivată (DSA): motivul, detalii opționale și confirmarea bunei-credințe.
+  const REPORT_REASONS = [
+    ["illegal", "Conținut ilegal"],
+    ["hate", "Ură sau discriminare"],
+    ["harassment", "Hărțuire sau amenințări"],
+    ["personal_data", "Date personale ale altcuiva"],
+    ["sexual", "Conținut sexual"],
+    ["spam", "Spam sau reclamă"],
+    ["copyright", "Încalcă drepturi de autor"],
+    ["other", "Altceva"],
+  ];
+
+  function openReportForm(ann, clientX, clientY, onDone) {
+    document.querySelectorAll(".wa-popover").forEach((p) => p.remove());
+    const select = el("select", { class: "wa-report-reason" }, el("option", { value: "" }, "Alege motivul…"), ...REPORT_REASONS.map(([v, l]) => el("option", { value: v }, l)));
+    const details = el("textarea", { rows: "3", maxlength: "1000", placeholder: "Detalii (opțional): ce anume e problema" });
+    const faith = el("input", { type: "checkbox" });
+    const msg = el("div", { class: "wa-report-msg" });
+    const submit = el("button", { class: "wa-submit" }, "Trimite raportarea");
+    stopKeysPropagating(details);
+    const popover = el(
+      "div",
+      {
+        class: "wa-popover wa-report-form",
+        style: `top:${Math.max(Math.min(clientY, window.innerHeight - 300), 8)}px; left:${Math.max(Math.min(clientX, window.innerWidth - 280), 8)}px;`,
+      },
+      el("label", {}, "De ce raportezi adnotarea?"),
+      select,
+      details,
+      el("label", { class: "wa-report-faith" }, faith, "Confirm că raportez cu bună-credință și că informațiile sunt corecte"),
+      msg,
+      el("div", { class: "wa-actions" }, el("button", { class: "wa-cancel", onclick: () => popover.remove() }, "Anulează"), submit)
+    );
+    submit.onclick = async () => {
+      if (!select.value) return (msg.textContent = "Alege un motiv.");
+      if (!faith.checked) return (msg.textContent = "Bifează confirmarea.");
+      submit.disabled = true;
+      try {
+        await WA_Api.report(ann.id, state.userId, {
+          reason: select.value,
+          details: details.value.trim() || undefined,
+          goodFaith: true,
+        });
+        popover.remove();
+        onDone?.();
+        showSaveError("Mulțumim! Raportarea a fost trimisă și va fi verificată.", { ok: true });
+      } catch (err) {
+        msg.textContent = err.message;
+        submit.disabled = false;
+      }
+    };
+    uiHost().appendChild(popover);
+    clampToViewport(popover);
+    select.focus();
+  }
+
   function attachVoteControl(ann, x, y) {
     const canDelete = isMine(ann);
     const control = el(
@@ -867,10 +923,12 @@
       const updated = await WA_Api.vote(ann.id, state.userId, "down");
       updateVotes(ann.id, updated.votes);
     };
-    control.querySelector(".wa-report").onclick = async (e) => {
+    control.querySelector(".wa-report").onclick = (e) => {
       e.stopPropagation();
-      await WA_Api.report(ann.id, state.userId);
-      control.querySelector(".wa-report").textContent = "🚩✓";
+      pauseVideoIfPlaying();
+      openReportForm(ann, e.clientX, e.clientY, () => {
+        control.querySelector(".wa-report").textContent = "🚩✓";
+      });
     };
 
     if (canDelete && ann.type !== "link") {
@@ -909,13 +967,14 @@
   // pentru toate uneltele, ca utilizatorul să știe DE CE a dispărut, nu doar CĂ a dispărut.
   let saveErrorToast = null;
   let saveErrorTimer = null;
-  function showSaveError(message) {
+  function showSaveError(message, { ok = false } = {}) {
     clearTimeout(saveErrorTimer);
     if (!saveErrorToast) {
       saveErrorToast = el("div", { class: "wa-save-error" });
       uiHost().appendChild(saveErrorToast);
     }
-    saveErrorToast.textContent = `⚠️ ${message}`;
+    saveErrorToast.textContent = `${ok ? "✅" : "⚠️"} ${message}`;
+    saveErrorToast.classList.toggle("wa-ok", ok);
     saveErrorToast.classList.add("wa-visible");
     saveErrorTimer = setTimeout(() => saveErrorToast?.classList.remove("wa-visible"), 5000);
   }
@@ -3465,8 +3524,10 @@
   // Până la acord, extensia nu trimite NIMIC la server: nici amprenta paginii, nici Topul.
   // Acordul e global (o singură dată), ținut în chrome.storage; se retrage din popup.
   const CONSENT_KEY = "wa_consent";
-  const CONSENT_VERSION = 1; // crește dacă se schimbă ce date se trimit — se cere acord din nou
+  const CONSENT_VERSION = 2; // crește dacă se schimbă ce date se trimit — se cere acord din nou
+  // (2: amprenta IP la voturi/raportări, motivul raportărilor, termenii de utilizare)
   const PRIVACY_URL = "https://claude.ai/code/artifact/5b5b0d64-a764-4407-b294-96b377a36e41";
+  const TERMS_URL = "https://claude.ai/artifact/Y1zMCdLSAioXzbo2t3Jztd";
 
   async function loadConsent() {
     try {
@@ -3484,6 +3545,7 @@
     const accept = el("button", { class: "wa-consent-accept" }, "Sunt de acord, pornește");
     const later = el("button", { class: "wa-consent-later" }, "Nu acum");
     const policy = el("a", { href: PRIVACY_URL, target: "_blank", rel: "noopener noreferrer" }, "Politica de confidențialitate");
+    const terms = el("a", { href: TERMS_URL, target: "_blank", rel: "noopener noreferrer" }, "Termenii de utilizare");
     const box = el(
       "div",
       { class: "wa-consent", role: "dialog", "aria-modal": "true", "aria-labelledby": "wa-consent-title" },
@@ -3496,15 +3558,24 @@
           "Pagina:",
           "la fiecare pagină deschisă, extensia trimite serverului nostru o amprentă (hash) a adresei, nu adresa. Adresa reală pleacă doar pentru paginile pe care adaugi tu o adnotare."
         ),
-        item("Public:", "ce desenezi sau scrii e vizibil pentru oricine are extensia, pe aceeași pagină."),
+        item("Public:", "ce desenezi sau scrii e vizibil pentru oricine are extensia, pe aceeași pagină. Nu posta conținut ilegal, ură, hărțuire sau date personale ale altora."),
         item(
           "Identitate:",
           "primești un ID generat pe dispozitivul tău (pseudonim, fără nume sau email). Serverul vede adresa IP a cererilor."
         ),
         item("Linkuri:", "linkurile pe care le adaugi sunt verificate la URLhaus (abuse.ch) ca să nu fie periculoase."),
+        item("Voturi și raportări:", "se păstrează împreună cu o amprentă a adresei IP (nu IP-ul), ca fiecare conexiune să voteze și să raporteze o singură dată."),
         item("Excepții:", "pe paginile locale sau interne (localhost, adrese IP) extensia nu pornește deloc.")
       ),
-      el("p", { class: "wa-consent-small" }, "Nu vindem date și nu facem reclame sau profilare. Poți retrage acordul oricând din meniul extensiei. ", policy, "."),
+      el(
+        "p",
+        { class: "wa-consent-small" },
+        "Nu vindem date și nu facem reclame sau profilare. Poți retrage acordul oricând din meniul extensiei. Apăsând „Sunt de acord” accepți ",
+        terms,
+        " și ",
+        policy,
+        "."
+      ),
       el("div", { class: "wa-consent-actions" }, later, accept)
     );
     const backdrop = el("div", { class: "wa-consent-backdrop" }, box);
@@ -3533,7 +3604,10 @@
     networkStarted = true;
     await loadExisting();
     await refreshGlobalTop();
-    setInterval(refreshGlobalTop, 30000); // prinde și voturile date de alții, pe alte pagini, între timp
+    // prinde și voturile date de alții între timp — doar în tab-ul pe care îl vezi, nu în
+    // toate tab-urile deschise (fiecare tab ar fi cerut Topul la 30s)
+    setInterval(() => document.visibilityState === "visible" && refreshGlobalTop(), 30000);
+    document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refreshGlobalTop());
   }
 
   // Retragerea acordului (din popup) oprește imediat extensia pe paginile deschise.
@@ -3582,7 +3656,12 @@
   }
 
   (async function init() {
-    if (isPrivatePage() && !isLocalServer(await window.WA_Storage.getServerUrl())) return;
+    const serverUrl = await window.WA_Storage.getServerUrl();
+    if (isPrivatePage() && !isLocalServer(serverUrl)) return;
+    // nici pe paginile serverului nostru (ex. pagina de moderare /admin)
+    try {
+      if (new URL(serverUrl).origin === location.origin) return;
+    } catch {}
     await loadConsent();
     const identity = await window.WA_Storage.getIdentity();
     state.userId = identity.id; // secret — doar în cererile proprii de creare/editare/ștergere

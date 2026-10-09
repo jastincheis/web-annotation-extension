@@ -1,10 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Adormis",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Adaugă graffiti, bule cu text și comentarii pe orice pagină web sau video.",
-  "permissions": ["storage", "activeTab", "alarms"],
-  "host_permissions": ["http://*/*", "https://*/*"],
+  "permissions": ["storage", "alarms"],
   "background": {
     "service_worker": "background.js"
   },

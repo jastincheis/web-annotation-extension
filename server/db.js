@@ -60,7 +60,55 @@ db.exec(`
   );
 `);
 
+// Coloane adăugate după prima versiune — se adaugă automat la bazele de date existente.
+function addColumn(table, column, type) {
+  const exists = db.prepare(`SELECT COUNT(*) AS n FROM pragma_table_info('${table}') WHERE name = ?`).get(column).n;
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+}
+// Moderare: o adnotare scoasă de administrator (conținut ilegal / contra regulilor) nu mai
+// apare nicăieri, dar rămâne înregistrată, cu motivul (DSA cere o „expunere de motive”).
+addColumn("annotations", "removed_at", "INTEGER");
+addColumn("annotations", "removed_reason", "TEXT");
+// Raportări cu motiv, detalii și momentul raportării (DSA: notificări motivate).
+addColumn("reports", "reason", "TEXT");
+addColumn("reports", "details", "TEXT");
+addColumn("reports", "created_at", "INTEGER");
+// Amprenta IP-ului (HMAC cu un secret al serverului, nu IP-ul): un singur vot și o singură
+// raportare pe adnotare de pe aceeași adresă IP, oricâte ID-uri ar inventa cineva.
+addColumn("votes", "ip_hash", "TEXT");
+addColumn("reports", "ip_hash", "TEXT");
+db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_ip ON votes(annotation_id, ip_hash);`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_reports_ip ON reports(annotation_id, ip_hash);`);
+
 // Auto-hide annotations after this many unique reports (per doc: 5-10).
 const REPORT_HIDE_THRESHOLD = 5;
 
-module.exports = { db, REPORT_HIDE_THRESHOLD, sha256Hex };
+// Adnotările scoase de moderator se păstrează ca evidență cel mult 2 ani (promis în politica
+// de confidențialitate), apoi se șterg definitiv, cu voturile și raportările lor.
+const REMOVED_RETENTION_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+function purgeOldRemoved() {
+  const cutoff = Date.now() - REMOVED_RETENTION_MS;
+  const old = db.prepare("SELECT id FROM annotations WHERE removed_at IS NOT NULL AND removed_at < ?").all(cutoff);
+  for (const { id } of old) {
+    db.prepare("DELETE FROM votes WHERE annotation_id = ?").run(id);
+    db.prepare("DELETE FROM reports WHERE annotation_id = ?").run(id);
+    db.prepare("DELETE FROM annotations WHERE id = ?").run(id);
+  }
+}
+purgeOldRemoved();
+setInterval(purgeOldRemoved, 24 * 60 * 60 * 1000).unref();
+
+// Condiția „vizibilă public”: nu ascunsă de raportări și nu scoasă de moderator.
+const VISIBLE = `reports < ${REPORT_HIDE_THRESHOLD} AND removed_at IS NULL`;
+
+// Secretul pentru amprenta IP-urilor. Trebuie setat pe server (IP_HASH_SECRET), altfel se
+// generează unul la fiecare pornire — și atunci aceeași adresă IP ar putea vota din nou
+// după fiecare redeploy.
+const IP_HASH_SECRET = process.env.IP_HASH_SECRET || crypto.randomBytes(32).toString("hex");
+if (!process.env.IP_HASH_SECRET) console.warn("[Adormis] IP_HASH_SECRET lipsește — folosesc unul temporar");
+
+function ipHash(ip) {
+  return crypto.createHmac("sha256", IP_HASH_SECRET).update(String(ip || "")).digest("hex").slice(0, 32);
+}
+
+module.exports = { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash };

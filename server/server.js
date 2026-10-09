@@ -9,6 +9,7 @@ const path = require("path");
 const rateLimit = require("express-rate-limit");
 const annotationsRouter = require("./routes/annotations");
 const checkUrlRouter = require("./routes/check-url");
+const adminRouter = require("./routes/admin");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -18,7 +19,10 @@ const PORT = process.env.PORT || 4000;
 // toată lumea în loc să fie per utilizator. 1 = are încredere doar în primul hop.
 app.set("trust proxy", 1);
 
-app.use(cors()); // extensia rulează pe origin-uri diferite (fiecare pagină web)
+// CORS deschis pentru API-ul public (extensia rulează pe origin-uri diferite — fiecare pagină
+// web), dar NU pentru zona de administrare: acolo doar pagina /admin, de pe același server.
+const publicCors = cors();
+app.use((req, res, next) => (/^\/(api\/)?admin(\/|$)/.test(req.path) ? next() : publicCors(req, res, next)));
 app.use(express.json({ limit: "2mb" })); // desenele SVG pot fi ceva mai mari
 
 // Limită generală, pe IP, pentru TOT API-ul — protecție de bază împotriva unui
@@ -44,6 +48,24 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/version", (_req, res) => res.sendFile(path.join(__dirname, "version.json")));
 
 app.use("/api/annotations", annotationsRouter);
+app.use("/api/admin", adminRouter);
+
+// Pagina de moderare (server/admin). Antete stricte: doar resurse proprii, fără încadrare în
+// alte site-uri, fără indexare.
+app.use(
+  "/admin",
+  (_req, res, next) => {
+    res.set({
+      "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      "X-Frame-Options": "DENY",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "X-Robots-Tag": "noindex, nofollow",
+    });
+    next();
+  },
+  express.static(path.join(__dirname, "admin"))
+);
 app.use("/api/check-url", checkUrlRouter);
 
 app.listen(PORT, () => {

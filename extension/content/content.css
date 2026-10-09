@@ -947,3 +947,28 @@
 .wa-consent-accept { background: linear-gradient(140deg, #7c3aed, #ec4899); color: white; }
 .wa-consent-accept:hover { filter: brightness(1.08); }
 .wa-consent-actions button:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
+
+/* Formularul de raportare (motiv + detalii + bună-credință) */
+.wa-popover.wa-report-form { width: 270px; }
+.wa-report-form select {
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid #3d3560;
+  background: #14102a;
+  color: #eae6ff;
+  padding: 5px 6px;
+  font: inherit;
+}
+.wa-report-form textarea { resize: vertical; min-height: 54px; font: inherit; }
+.wa-report-faith {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  color: #c9c3e6;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.wa-report-faith input { width: auto; margin-top: 2px; flex: 0 0 auto; }
+.wa-report-msg { color: #fca5a5; font-size: 11.5px; min-height: 0; }
+.wa-report-msg:empty { display: none; }
+.wa-save-error.wa-ok { background: #13301f; border-color: #2f7a4f; }

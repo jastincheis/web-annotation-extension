@@ -1,7 +1,7 @@
 const crypto = require("node:crypto");
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { db, REPORT_HIDE_THRESHOLD, sha256Hex } = require("../db");
+const { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash } = require("../db");
 
 // Pagina se identifică prin amprenta adresei (?urlHash=, 64 hex) — varianta nouă, care nu
 // trimite adresa. ?url= rămâne doar pentru extensiile încă neactualizate (≤ 0.2.3).
@@ -103,10 +103,10 @@ router.get("/", (req, res) => {
   const rows = db
     .prepare(
       `SELECT * FROM annotations
-       WHERE url_hash = ? AND reports < ? AND votes >= ?
+       WHERE url_hash = ? AND ${VISIBLE} AND votes >= ?
        ORDER BY created_at ASC`
     )
-    .all(urlHash, REPORT_HIDE_THRESHOLD, min);
+    .all(urlHash, min);
 
   res.json(rows.map(serialize));
 });
@@ -134,9 +134,9 @@ function countByType(where, params) {
     .prepare(
       `SELECT type, COUNT(*) AS n,
               SUM(CASE WHEN type != 'link' AND json_extract(data, '$.url') LIKE 'http%' THEN 1 ELSE 0 END) AS linked
-       FROM annotations WHERE reports < ? ${where} GROUP BY type`
+       FROM annotations WHERE ${VISIBLE} ${where} GROUP BY type`
     )
-    .all(REPORT_HIDE_THRESHOLD, ...params);
+    .all(...params);
   const byType = {};
   let total = 0;
   let withLink = 0;
@@ -152,8 +152,8 @@ router.get("/stats", (req, res) => {
   if (!globalStatsCache || globalStatsCache.expiresAt < Date.now()) {
     const global = countByType("", []);
     global.pages = db
-      .prepare("SELECT COUNT(DISTINCT url) AS n FROM annotations WHERE reports < ?")
-      .get(REPORT_HIDE_THRESHOLD).n;
+      .prepare(`SELECT COUNT(DISTINCT url) AS n FROM annotations WHERE ${VISIBLE}`)
+      .get().n;
     globalStatsCache = { data: global, expiresAt: Date.now() + STATS_CACHE_TTL_MS };
   }
   const out = { global: globalStatsCache.data };
@@ -173,11 +173,11 @@ router.get("/top", (req, res) => {
   const rows = db
     .prepare(
       `SELECT * FROM annotations
-       WHERE reports < ? AND votes > 0
+       WHERE ${VISIBLE} AND votes > 0
        ORDER BY votes DESC, created_at ASC
        LIMIT ?`
     )
-    .all(REPORT_HIDE_THRESHOLD, limit);
+    .all(limit);
 
   const data = rows.map(serialize);
   topCache.set(limit, { data, expiresAt: Date.now() + TOP_CACHE_TTL_MS });
@@ -219,7 +219,7 @@ router.patch("/:id", writeLimiter, (req, res) => {
     return res.status(400).json({ error: "Missing authorId or patch" });
   }
 
-  const row = db.prepare("SELECT * FROM annotations WHERE id = ?").get(id);
+  const row = db.prepare("SELECT * FROM annotations WHERE id = ? AND removed_at IS NULL").get(id);
   if (!row) return res.status(404).json({ error: "Not found" });
   if (row.author_id !== authorId) {
     return res.status(403).json({ error: "Only the original author can edit this annotation" });
@@ -242,7 +242,8 @@ router.delete("/:id", writeLimiter, (req, res) => {
   const { id } = req.params;
   const { authorId } = req.body || {};
 
-  const row = db.prepare("SELECT * FROM annotations WHERE id = ?").get(id);
+  // o adnotare scoasă de moderator nu mai poate fi ștearsă de autor — rămâne ca evidență
+  const row = db.prepare("SELECT * FROM annotations WHERE id = ? AND removed_at IS NULL").get(id);
   if (!row) return res.status(404).json({ error: "Not found" });
   if (row.author_id !== authorId) {
     return res.status(403).json({ error: "Only the original author can delete this annotation" });
@@ -254,62 +255,74 @@ router.delete("/:id", writeLimiter, (req, res) => {
   res.status(204).end();
 });
 
-// POST /api/annotations/:id/vote  { voterId, direction: 'up'|'down' }
+// POST /api/annotations/:id/vote  { voterId, direction: "up" | "down" }
+// Un singur vot pe adnotare per votant ȘI per adresă IP (amprentată): cu ID-uri inventate de
+// pe același calculator nu se mai poate umfla sau dărâma o adnotare. Votul repetat în aceeași
+// direcție nu schimbă nimic; în direcția opusă își schimbă sensul.
 router.post("/:id/vote", writeLimiter, (req, res) => {
   const { id } = req.params;
   const { voterId, direction } = req.body || {};
-
-  if (!voterId || !["up", "down"].includes(direction)) {
+  if (!isStr(voterId, 100) || !voterId || !["up", "down"].includes(direction)) {
     return res.status(400).json({ error: "Missing voterId or invalid direction" });
   }
 
-  const annotation = db.prepare("SELECT * FROM annotations WHERE id = ?").get(id);
+  const annotation = db.prepare(`SELECT * FROM annotations WHERE id = ? AND removed_at IS NULL`).get(id);
   if (!annotation) return res.status(404).json({ error: "Not found" });
 
+  const ip = ipHash(req.ip);
   const existing = db
-    .prepare("SELECT * FROM votes WHERE annotation_id = ? AND voter_id = ?")
-    .get(id, voterId);
-
+    .prepare("SELECT * FROM votes WHERE annotation_id = ? AND (voter_id = ? OR ip_hash = ?) LIMIT 1")
+    .get(id, voterId, ip);
   const delta = direction === "up" ? 1 : -1;
 
   if (!existing) {
-    db.prepare(
-      "INSERT INTO votes (annotation_id, voter_id, direction) VALUES (?, ?, ?)"
-    ).run(id, voterId, direction);
+    db.prepare("INSERT INTO votes (annotation_id, voter_id, direction, ip_hash) VALUES (?, ?, ?, ?)").run(
+      id,
+      voterId,
+      direction,
+      ip
+    );
     db.prepare("UPDATE annotations SET votes = votes + ? WHERE id = ?").run(delta, id);
   } else if (existing.direction !== direction) {
-    // Switching vote: undo old, apply new (net change of 2).
     db.prepare("UPDATE votes SET direction = ? WHERE annotation_id = ? AND voter_id = ?").run(
       direction,
       id,
-      voterId
+      existing.voter_id
     );
     db.prepare("UPDATE annotations SET votes = votes + ? WHERE id = ?").run(delta * 2, id);
   }
-  // else: same vote repeated, no-op.
 
   const row = db.prepare("SELECT * FROM annotations WHERE id = ?").get(id);
   res.json(serialize(row));
 });
 
-// POST /api/annotations/:id/report  { reporterId }
+// POST /api/annotations/:id/report  { reporterId, reason, details?, goodFaith: true }
+// Notificare motivată (DSA art. 16): motivul din listă, detalii opționale și confirmarea că
+// raportarea e făcută cu bună-credință. O singură raportare pe adnotare per raportor ȘI per
+// adresă IP; la REPORT_HIDE_THRESHOLD raportări distincte adnotarea se ascunde automat,
+// până o verifică un administrator (vezi routes/admin.js).
+const REPORT_REASONS = new Set(["illegal", "hate", "harassment", "personal_data", "sexual", "spam", "copyright", "other"]);
+
 router.post("/:id/report", writeLimiter, (req, res) => {
   const { id } = req.params;
-  const { reporterId } = req.body || {};
-  if (!reporterId) return res.status(400).json({ error: "Missing reporterId" });
+  const { reporterId, reason, details, goodFaith } = req.body || {};
+  if (!isStr(reporterId, 100) || !reporterId) return res.status(400).json({ error: "Missing reporterId" });
+  if (!REPORT_REASONS.has(reason)) return res.status(400).json({ error: "Alege un motiv al raportării" });
+  if (details !== undefined && !isStr(details, 1000)) return res.status(400).json({ error: "Detalii prea lungi" });
+  if (goodFaith !== true) return res.status(400).json({ error: "Confirmă că raportarea e făcută cu bună-credință" });
 
-  const annotation = db.prepare("SELECT * FROM annotations WHERE id = ?").get(id);
+  const annotation = db.prepare(`SELECT * FROM annotations WHERE id = ? AND removed_at IS NULL`).get(id);
   if (!annotation) return res.status(404).json({ error: "Not found" });
 
+  const ip = ipHash(req.ip);
   const existing = db
-    .prepare("SELECT * FROM reports WHERE annotation_id = ? AND reporter_id = ?")
-    .get(id, reporterId);
+    .prepare("SELECT 1 FROM reports WHERE annotation_id = ? AND (reporter_id = ? OR ip_hash = ?) LIMIT 1")
+    .get(id, reporterId, ip);
 
   if (!existing) {
-    db.prepare("INSERT INTO reports (annotation_id, reporter_id) VALUES (?, ?)").run(
-      id,
-      reporterId
-    );
+    db.prepare(
+      "INSERT INTO reports (annotation_id, reporter_id, reason, details, created_at, ip_hash) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(id, reporterId, reason, details ? String(details) : null, Date.now(), ip);
     db.prepare("UPDATE annotations SET reports = reports + 1 WHERE id = ?").run(id);
   }
 

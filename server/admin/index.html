@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Adormis · Moderare</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <header>
+    <h1>Adormis · Moderare</h1>
+    <form id="login">
+      <label for="token">Token de administrator</label>
+      <input id="token" type="password" autocomplete="off" required>
+      <button type="submit">Intră</button>
+    </form>
+    <nav id="tabs" hidden>
+      <button data-status="reported" class="active">Raportate</button>
+      <button data-status="removed">Scoase</button>
+      <button id="logout" type="button">Ieși</button>
+    </nav>
+  </header>
+  <p id="msg" role="status"></p>
+  <main id="list"></main>
+  <script src="admin.js"></script>
+</body>
+</html>

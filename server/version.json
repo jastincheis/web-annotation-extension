@@ -1,4 +1,4 @@
 {
-  "latest": "0.2.5",
-  "notes": "Securitate: datele adnotărilor sunt verificate pe server și la afișare (culori, poziții, mărimi), dependențe actualizate, politică de confidențialitate nouă."
+  "latest": "0.2.6",
+  "notes": "Raportare cu motiv, moderare, termeni de utilizare, un vot și o raportare pe conexiune, permisiuni mai puține. La pornire ți se cere din nou acordul."
 }

@@ -44,8 +44,15 @@ Endpoint-uri disponibile:
 - `DELETE /api/annotations/:id` — `{authorId}` (doar autorul își poate șterge propria adnotare)
 - `authorId` e secretul autorului (generat local de extensie): nu apare în niciun răspuns —
   răspunsurile conțin doar `authorHash` (primele 32 de caractere hex din SHA-256(authorId))
-- `POST /api/annotations/:id/vote` — `{voterId, direction: "up"|"down"}`
-- `POST /api/annotations/:id/report` — `{reporterId}` (auto-ascundere la 5 raportări)
+- `POST /api/annotations/:id/vote` — `{voterId, direction: "up"|"down"}` (un vot pe adnotare
+  per votant și per adresă IP, amprentată cu `IP_HASH_SECRET`)
+- `POST /api/annotations/:id/report` — `{reporterId, reason, details?, goodFaith: true}`;
+  `reason` ∈ `illegal|hate|harassment|personal_data|sexual|spam|copyright|other`; o raportare
+  per raportor și per IP; auto-ascundere la 5 raportări, până la verificarea unui moderator
+- `GET /api/admin/queue?status=reported|removed`, `POST /api/admin/annotations/:id/remove`
+  `{reason}`, `POST /api/admin/annotations/:id/restore` — moderare, cu
+  `Authorization: Bearer <ADMIN_TOKEN>` (fără CORS); interfața e la `/admin`. Adnotările
+  scoase dispar pentru toți, rămân ca evidență și se șterg definitiv după 2 ani
 - `POST /api/check-url` — `{url}` → `{safe, checked, threats}` (verificare URLhaus;
   fără `URLHAUS_AUTH_KEY` linkurile trec)
 
@@ -92,6 +99,11 @@ Dacă rulezi backend-ul pe altă mașină/port, schimbă adresa din popup („Ad
    - `PORT` — Railway o setează singur, serverul o citește deja (`process.env.PORT`).
    - `URLHAUS_AUTH_KEY` — cheie gratuită de pe auth.abuse.ch, pentru verificarea
      linkurilor; fără ea verificarea e dezactivată (linkurile trec).
+   - `ADMIN_TOKEN` — parola paginii de moderare `/admin` (minim 24 de caractere,
+     ex. `openssl rand -hex 32`); fără ea, moderarea e dezactivată (404).
+   - `IP_HASH_SECRET` — cheia pentru amprenta IP-urilor de la voturi/raportări
+     (`openssl rand -hex 32`); fără ea se generează una la fiecare pornire, iar aceeași
+     conexiune poate vota din nou după un redeploy.
 5. Adresa serverului live e setată implicit în `extension/background.js`
    (`DEFAULT_SERVER_URL`) — utilizatorii nu trebuie să configureze nimic.
 
