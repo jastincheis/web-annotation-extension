@@ -4,9 +4,15 @@
     return window.WA_Storage.getServerUrl();
   }
 
+  // Pagina se cere după AMPRENTA adresei (SHA-256), nu după adresă — serverul nu află ce
+  // pagini vizitezi; adresa reală pleacă doar odată cu o adnotare pe care o creezi tu.
+  async function pageHash(url) {
+    return window.WA_Storage.sha256Hex(url);
+  }
+
   async function listAnnotations(url) {
     const b = await base();
-    const res = await fetch(`${b}/api/annotations?url=${encodeURIComponent(url)}`);
+    const res = await fetch(`${b}/api/annotations?urlHash=${await pageHash(url)}`);
     if (!res.ok) throw new Error(`Fetch eșuat (${res.status})`);
     return res.json();
   }
@@ -22,7 +28,7 @@
   // Câte adnotări sunt, pe tipuri: global și (dacă e dat url) pentru pagina dată.
   async function getStats(url) {
     const b = await base();
-    const q = url ? `?url=${encodeURIComponent(url)}` : "";
+    const q = url ? `?urlHash=${await pageHash(url)}` : "";
     const res = await fetch(`${b}/api/annotations/stats${q}`);
     if (!res.ok) throw new Error(`Fetch statistici eșuat (${res.status})`);
     return res.json();

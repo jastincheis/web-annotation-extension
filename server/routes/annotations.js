@@ -1,6 +1,15 @@
+const crypto = require("node:crypto");
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { db, REPORT_HIDE_THRESHOLD } = require("../db");
+const { db, REPORT_HIDE_THRESHOLD, sha256Hex } = require("../db");
+
+// Pagina se identifică prin amprenta adresei (?urlHash=, 64 hex) — varianta nouă, care nu
+// trimite adresa. ?url= rămâne doar pentru extensiile încă neactualizate (≤ 0.2.3).
+function pageHashFromQuery(query) {
+  if (typeof query.urlHash === "string" && /^[0-9a-f]{64}$/.test(query.urlHash)) return query.urlHash;
+  if (query.url) return sha256Hex(query.url);
+  return null;
+}
 
 const router = express.Router();
 
@@ -23,13 +32,21 @@ function hasUnsafeLink(data) {
   return data && data.url !== undefined && data.url !== "" && !/^https?:\/\//i.test(String(data.url));
 }
 
+// authorId e SECRETUL autorului — cu el se editează/șterge o adnotare (PATCH/DELETE), deci nu
+// iese niciodată în răspunsuri. Public trimitem doar o amprentă SHA-256 a lui: extensia își
+// calculează propria amprentă și o compară, ca să știe ce adnotări sunt ale ei. ID-ul e un
+// UUID aleator (122 de biți), deci din amprentă nu se poate ghici înapoi.
+function authorHash(authorId) {
+  return crypto.createHash("sha256").update(String(authorId)).digest("hex").slice(0, 32);
+}
+
 function serialize(row) {
   return {
     id: row.id,
     url: row.url,
     type: row.type,
     data: JSON.parse(row.data),
-    authorId: row.author_id,
+    authorHash: authorHash(row.author_id),
     votes: row.votes,
     reports: row.reports,
     createdAt: row.created_at,
@@ -38,18 +55,19 @@ function serialize(row) {
 
 // GET /api/annotations?url=<page url>&minVotes=0
 router.get("/", (req, res) => {
-  const { url, minVotes } = req.query;
-  if (!url) return res.status(400).json({ error: "Missing url query param" });
+  const { minVotes } = req.query;
+  const urlHash = pageHashFromQuery(req.query);
+  if (!urlHash) return res.status(400).json({ error: "Missing urlHash (or url) query param" });
 
   const min = Number.isFinite(Number(minVotes)) ? Number(minVotes) : 0;
 
   const rows = db
     .prepare(
       `SELECT * FROM annotations
-       WHERE url = ? AND reports < ? AND votes >= ?
+       WHERE url_hash = ? AND reports < ? AND votes >= ?
        ORDER BY created_at ASC`
     )
-    .all(url, REPORT_HIDE_THRESHOLD, min);
+    .all(urlHash, REPORT_HIDE_THRESHOLD, min);
 
   res.json(rows.map(serialize));
 });
@@ -66,7 +84,7 @@ router.get("/", (req, res) => {
 const topCache = new Map(); // limit -> { data, expiresAt }
 const TOP_CACHE_TTL_MS = 10_000;
 
-// GET /api/annotations/stats?url=<url> — câte adnotări sunt, pe tipuri: global (toate
+// GET /api/annotations/stats?urlHash=<sha256> — câte adnotări sunt, pe tipuri: global (toate
 // paginile) și, dacă e dat `url`, pentru pagina aceea. Cele ascunse prin raportări nu se
 // numără. Partea globală e ținută în cache 30s (se cere la fiecare deschidere a contorului).
 const STATS_CACHE_TTL_MS = 30000;
@@ -100,7 +118,8 @@ router.get("/stats", (req, res) => {
     globalStatsCache = { data: global, expiresAt: Date.now() + STATS_CACHE_TTL_MS };
   }
   const out = { global: globalStatsCache.data };
-  if (req.query.url) out.page = countByType("AND url = ?", [String(req.query.url)]);
+  const urlHash = pageHashFromQuery(req.query);
+  if (urlHash) out.page = countByType("AND url_hash = ?", [urlHash]);
   res.json(out);
 });
 
@@ -140,9 +159,9 @@ router.post("/", writeLimiter, (req, res) => {
   const createdAt = Date.now();
 
   db.prepare(
-    `INSERT INTO annotations (id, url, type, data, author_id, votes, reports, created_at)
-     VALUES (?, ?, ?, ?, ?, 0, 0, ?)`
-  ).run(id, url, type, JSON.stringify(data), authorId, createdAt);
+    `INSERT INTO annotations (id, url, url_hash, type, data, author_id, votes, reports, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)`
+  ).run(id, url, sha256Hex(url), type, JSON.stringify(data), authorId, createdAt);
 
   const row = db.prepare("SELECT * FROM annotations WHERE id = ?").get(id);
   res.status(201).json(serialize(row));

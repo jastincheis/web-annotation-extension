@@ -44,3 +44,6 @@ input {
   color: #86efac;
   line-height: 1.4;
 }
+.consent-status { font-size: 11px; color: #c9c3e6; margin: 0 0 6px; line-height: 1.4; }
+#revoke-consent { background: #2a2545; border: 1px solid #3d3560; }
+#revoke-consent:hover { background: #3a2a4a; }

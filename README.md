@@ -31,15 +31,19 @@ nevoie de compilare (necesită Node ≥ 22.5).
 Endpoint-uri disponibile:
 - `GET /api/health` — `{ok: true}`
 - `GET /api/version` — conținutul `version.json` (`{latest, notes}`), pentru beculețul de update
-- `GET /api/annotations?url=<url>&minVotes=0` — listă adnotări pentru o pagină
+- `GET /api/annotations?urlHash=<sha256(url)>&minVotes=0` — listă adnotări pentru o pagină,
+  identificată prin amprenta SHA-256 (hex) a adresei, nu prin adresa în sine
+  (`?url=` mai merge doar pentru extensiile vechi, ≤ 0.2.3)
 - `GET /api/annotations/top?limit=10` — cele mai votate adnotări de pe toate paginile
   (min. 1 vot, `limit` max. 50, cache 10s)
-- `GET /api/annotations/stats?url=<url>` — numărul de adnotări pe tipuri:
+- `GET /api/annotations/stats?urlHash=<sha256(url)>` — numărul de adnotări pe tipuri:
   `{global: {total, byType, withLink, pages}, page: {total, byType, withLink}}`
-  (`page` doar dacă e dat `url`; partea globală are cache 30s)
+  (`page` doar dacă e dată pagina; partea globală are cache 30s)
 - `POST /api/annotations` — creează `{url, type, data, authorId}`
 - `PATCH /api/annotations/:id` — `{authorId, patch}` (mutare sau editare text/link; doar autorul)
 - `DELETE /api/annotations/:id` — `{authorId}` (doar autorul își poate șterge propria adnotare)
+- `authorId` e secretul autorului (generat local de extensie): nu apare în niciun răspuns —
+  răspunsurile conțin doar `authorHash` (primele 32 de caractere hex din SHA-256(authorId))
 - `POST /api/annotations/:id/vote` — `{voterId, direction: "up"|"down"}`
 - `POST /api/annotations/:id/report` — `{reporterId}` (auto-ascundere la 5 raportări)
 - `POST /api/check-url` — `{url}` → `{safe, checked, threats}` (verificare URLhaus;

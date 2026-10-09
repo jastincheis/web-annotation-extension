@@ -1,4 +1,4 @@
 {
-  "latest": "0.2.3",
-  "notes": "Contor de adnotări: numărul de pe pagină pe butonul rotund și în bară, plus detalii pe tipuri pentru pagină și pentru toată aplicația."
+  "latest": "0.2.4",
+  "notes": "Securitate și confidențialitate: doar autorul își mai poate modifica/șterge adnotările, ecran de acord la prima folosire, adresa paginilor nu mai e trimisă (doar o amprentă), paginile locale sunt ignorate. Actualizează extensia."
 }

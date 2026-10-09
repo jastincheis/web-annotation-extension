@@ -34,3 +34,28 @@ document.getElementById("toggle-btn").addEventListener("click", async () => {
     statusEl.textContent = "Reîncarcă pagina (extensia tocmai a pornit).";
   }
 });
+
+// Acordul pentru trimiterea datelor (dat la prima folosire, pe pagină). Retragerea lui
+// oprește imediat extensia pe paginile deschise (content.js ascultă schimbarea) și o face
+// să ceară din nou acordul data viitoare.
+const consentStatus = document.getElementById("consent-status");
+const revokeBtn = document.getElementById("revoke-consent");
+
+async function renderConsent() {
+  const { wa_consent } = await chrome.storage.local.get("wa_consent");
+  if (wa_consent) {
+    consentStatus.textContent = `Acord dat pe ${new Date(wa_consent.at).toLocaleDateString("ro-RO")}.`;
+    revokeBtn.hidden = false;
+  } else {
+    consentStatus.textContent = "Extensia e oprită: nu trimite nimic până nu îți dai acordul (apasă butonul de mai sus pe o pagină).";
+    revokeBtn.hidden = true;
+  }
+}
+
+revokeBtn.addEventListener("click", async () => {
+  await chrome.storage.local.remove("wa_consent");
+  statusEl.textContent = "Acord retras. Extensia nu mai trimite nimic.";
+  renderConsent();
+});
+
+renderConsent();

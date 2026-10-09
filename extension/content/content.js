@@ -5,7 +5,9 @@
   const SVG_NS = "http://www.w3.org/2000/svg";
 
   const state = {
-    userId: null,
+    userId: null, // secret local — vezi getIdentity (lib/storage.js)
+    consent: false, // acordul pentru trimiterea datelor — vezi showConsentDialog
+    userHash: null, // amprenta publică a lui userId (authorHash din răspunsurile serverului)
     toolbarVisible: false,
     activeTool: null, // 'pen' | 'spray' | 'shape' | 'text' | 'video'
     shapeKind: "circle", // 'circle' | 'arrow'
@@ -21,6 +23,30 @@
   let els = {};
   let pendingToolFinish = null; // dacă o unealtă are o sesiune deschisă (ex. spray), finalizeaz-o la schimbarea uneltei
 
+  const SENSITIVE_PARAM =
+    /^(.*token.*|code|state|nonce|otp|session.*|sid|ssid|auth.*|.*key|password|pass|pwd|secret|sig|signature|hash|email|e-?mail|phone|tel|ticket|reset.*|verify.*|confirm.*)$/i;
+
+  // Pagini care nu sunt publice: localhost, adrese IP, rețele interne. Pe ele extensia nu
+  // pornește deloc — nici măcar amprenta adresei nu pleacă spre server. Excepție: când
+  // serverul extensiei e el însuși local (dezvoltare), ca să se poată testa local.
+  function isPrivatePage() {
+    if (!/^https?:$/.test(location.protocol)) return true;
+    const h = location.hostname.toLowerCase();
+    if (!h.includes(".") || h === "localhost" || h.endsWith(".localhost")) return true;
+    if (/\.(local|lan|internal|intranet|home|corp|test|example|invalid)$/.test(h)) return true;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.startsWith("[") || h.includes(":")) return true; // IPv4/IPv6
+    return false;
+  }
+
+  function isLocalServer(url) {
+    try {
+      const h = new URL(url).hostname;
+      return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+    } catch {
+      return false;
+    }
+  }
+
   function pageKey() {
     // Pe YouTube, același video apare cu parametri în plus (&t=, &list=, &pp=...) —
     // fără normalizare, un link cu timestamp sau din playlist părea altă pagină și
@@ -35,10 +61,13 @@
       return location.origin + location.pathname.match(/^\/watch\/\d+/)[0];
     }
     // Parametri de urmărire (reclame, share-uri) nu schimbă conținutul paginii — fără ei,
-    // același link deschis din Facebook/newsletter ar fi părut altă pagină.
+    // același link deschis din Facebook/newsletter ar fi părut altă pagină. Cei SENSIBILI
+    // (token-uri de login/resetare parolă, coduri, sesiuni, email) nu au ce căuta într-o
+    // adresă salvată pe server odată cu o adnotare publică — îi scoatem și pe ei.
     const params = new URLSearchParams(location.search);
     [...params.keys()].forEach((k) => {
       if (/^(utm_.+|fbclid|gclid|dclid|gbraid|wbraid|msclkid|yclid|igshid|mc_cid|mc_eid|_ga)$/i.test(k)) params.delete(k);
+      else if (SENSITIVE_PARAM.test(k)) params.delete(k);
     });
     const search = params.toString();
     return location.origin + location.pathname + (search ? "?" + search : "");
@@ -335,6 +364,7 @@
   }
 
   async function loadGlobalStats() {
+    if (!state.consent) return;
     try {
       globalStats = (await WA_Api.getStats()).global;
     } catch (err) {
@@ -605,6 +635,11 @@
   }
 
   function toggleToolbar(forceShow) {
+    // Prima folosire: întâi acordul explicit (cerut de Chrome Web Store și GDPR), apoi uneltele.
+    if (!state.consent && forceShow !== false) {
+      showConsentDialog();
+      return;
+    }
     state.toolbarVisible = typeof forceShow === "boolean" ? forceShow : !state.toolbarVisible;
     els.toolbar.hidden = !state.toolbarVisible;
     els.toggleBtn?.classList.toggle("active", state.toolbarVisible);
@@ -812,7 +847,7 @@
   }
 
   function attachVoteControl(ann, x, y) {
-    const canDelete = ann.authorId === state.userId;
+    const canDelete = isMine(ann);
     const control = el(
       "div",
       { class: "wa-vote", style: `left:${x}px; top:${y}px;` },
@@ -887,7 +922,7 @@
 
   // Autorul poate re-edita textul unei adnotări (dublu-click) — funcționează pentru text/bulă.
   function makeEditableOnDblClick(ann, domEl, { onSave }) {
-    if (ann.authorId !== state.userId) return;
+    if (!isMine(ann)) return;
     domEl.addEventListener("dblclick", (e) => {
       e.stopPropagation();
       pauseVideoIfPlaying();
@@ -917,7 +952,7 @@
   // Editare pentru desene (pen/spray/formă) — nu au text, deci dublu-click deschide
   // un mic formular de culoare/grosime în loc de retastare inline.
   function makeStyleEditableOnDblClick(ann, domEl) {
-    if (ann.authorId !== state.userId) return;
+    if (!isMine(ann)) return;
     domEl.addEventListener("dblclick", (e) => {
       e.stopPropagation();
       e.preventDefault();
@@ -1092,7 +1127,7 @@
   // domEl poate fi un element DOM normal (text/bulă/link — poziționat cu left/top)
   // sau un element SVG (pen/spray/formă — mutat cu un translate, păstrat ca dx/dy în data).
   function makeMovable(ann, domEl, control) {
-    if (ann.authorId !== state.userId) return;
+    if (!isMine(ann)) return;
     domEl.classList.add("wa-owned");
     domEl.draggable = false; // dezactivăm drag-ul nativ al browserului (ex. pe <a>)
 
@@ -1223,8 +1258,8 @@
   // momentul potrivit din video. Centralizat aici (nu în două locuri separate) ca cele
   // două filtre să nu se calce unul pe altul, scriind amândouă în același style.display.
   function applyVisibility(entry) {
-    const isMine = entry.ann.authorId === state.userId;
-    const forced = state.myPanelOpen && isMine;
+    const mine = isMine(entry.ann);
+    const forced = state.myPanelOpen && mine;
 
     let filtered = false;
     if (entry.ann.votes < state.minVotes) filtered = true;
@@ -1340,7 +1375,7 @@
   // timp sunt vizibile — printr-un mic loop de animație, ca să rămână lipite de colțuri
   // chiar dacă adnotarea se mută/rotește/scalează în timp real.
   function attachTransformHandles(ann, domEl) {
-    if (ann.authorId !== state.userId) return null;
+    if (!isMine(ann)) return null;
 
     const resizeHandle = el("div", { class: "wa-handle wa-handle-resize", title: "Trage din colț pentru zoom" }, "⤡");
     const rotateHandle = el("div", { class: "wa-handle wa-handle-rotate", title: "Trage din colț pentru rotire" }, "↻");
@@ -2595,7 +2630,7 @@
       }, 250);
     });
 
-    if (ann.authorId === state.userId) {
+    if (isMine(ann)) {
       badge.addEventListener("dblclick", (e) => {
         if (openTimer) {
           clearTimeout(openTimer);
@@ -2820,9 +2855,15 @@
     return ann.type;
   }
 
-  function authorLabel(authorId) {
-    const short = authorId.slice(0, 4).toUpperCase();
-    return authorId === state.userId ? `Tu (${short})` : `Utilizator ${short}`;
+  // Ale cui sunt adnotările: serverul nu mai trimite authorId (e secretul de editare), doar
+  // amprenta lui — o comparăm cu amprenta propriului ID (state.userHash).
+  function isMine(ann) {
+    return !!ann?.authorHash && ann.authorHash === state.userHash;
+  }
+
+  function authorLabel(authorHash) {
+    const short = String(authorHash || "????").slice(0, 4).toUpperCase();
+    return authorHash === state.userHash ? `Tu (${short})` : `Utilizator ${short}`;
   }
 
   // Cele 10 cifre din panoul din dreapta: colorate (cu propria culoare) dacă există o
@@ -2855,6 +2896,7 @@
   // la navigare (SPA) și periodic — ca să prindă și voturile date de alții, pe alte
   // pagini/taburi, între timp.
   async function refreshGlobalTop() {
+    if (!state.consent) return; // fără acord, nicio cerere spre server
     try {
       state.globalTop = await WA_Api.listTopGlobal(10);
     } catch (err) {
@@ -2871,7 +2913,7 @@
     const onThisPage = ann.url === pageKey();
 
     const rows = [
-      el("div", { class: "wa-lb-detail-row" }, `${annotationIcon(ann.type)} ${authorLabel(ann.authorId)}`),
+      el("div", { class: "wa-lb-detail-row" }, `${annotationIcon(ann.type)} ${authorLabel(ann.authorHash)}`),
       el("div", { class: "wa-lb-detail-text" }, shortLabel(ann)),
       el("div", { class: "wa-lb-detail-row" }, `📄 ${shortenUrl(ann.url)}`),
     ];
@@ -2959,7 +3001,7 @@
 
     const mine = [...state.annotations.values()]
       .map((entry) => entry.ann)
-      .filter((ann) => ann.authorId === state.userId)
+      .filter((ann) => isMine(ann))
       .sort((a, b) => a.createdAt - b.createdAt);
 
     if (!mine.length) {
@@ -3339,6 +3381,7 @@
   // ---------- Init ----------
 
   async function loadExisting() {
+    if (!state.consent) return; // fără acord, nicio cerere spre server (nici amprenta paginii)
     try {
       const list = await WA_Api.listAnnotations(pageKey());
       list.forEach(renderAnnotation);
@@ -3396,6 +3439,88 @@
     if (msg.type === "TOGGLE_TOOLBAR") toggleToolbar();
   });
 
+  // ---------- Acord (prima folosire) ----------
+  // Până la acord, extensia nu trimite NIMIC la server: nici amprenta paginii, nici Topul.
+  // Acordul e global (o singură dată), ținut în chrome.storage; se retrage din popup.
+  const CONSENT_KEY = "wa_consent";
+  const CONSENT_VERSION = 1; // crește dacă se schimbă ce date se trimit — se cere acord din nou
+  const PRIVACY_URL = "https://claude.ai/code/artifact/5b5b0d64-a764-4407-b294-96b377a36e41";
+
+  async function loadConsent() {
+    try {
+      const { [CONSENT_KEY]: c } = await chrome.storage.local.get(CONSENT_KEY);
+      state.consent = !!c && c.v >= CONSENT_VERSION;
+    } catch {
+      state.consent = false;
+    }
+  }
+
+  let consentDialog = null;
+  function showConsentDialog() {
+    if (consentDialog) return;
+    const item = (title, text) => el("li", {}, el("strong", {}, title), " ", text);
+    const accept = el("button", { class: "wa-consent-accept" }, "Sunt de acord, pornește");
+    const later = el("button", { class: "wa-consent-later" }, "Nu acum");
+    const policy = el("a", { href: PRIVACY_URL, target: "_blank", rel: "noopener noreferrer" }, "Politica de confidențialitate");
+    const box = el(
+      "div",
+      { class: "wa-consent", role: "dialog", "aria-modal": "true", "aria-labelledby": "wa-consent-title" },
+      el("h2", { id: "wa-consent-title" }, "Înainte să pornești Adormis"),
+      el("p", {}, "Adormis arată adnotările lăsate de alți utilizatori pe pagina pe care ești. Pentru asta:"),
+      el(
+        "ul",
+        {},
+        item(
+          "Pagina:",
+          "la fiecare pagină deschisă, extensia trimite serverului nostru o amprentă (hash) a adresei, nu adresa. Adresa reală pleacă doar pentru paginile pe care adaugi tu o adnotare."
+        ),
+        item("Public:", "ce desenezi sau scrii e vizibil pentru oricine are extensia, pe aceeași pagină."),
+        item(
+          "Identitate:",
+          "primești un ID generat pe dispozitivul tău (pseudonim, fără nume sau email). Serverul vede adresa IP a cererilor."
+        ),
+        item("Linkuri:", "linkurile pe care le adaugi sunt verificate la URLhaus (abuse.ch) ca să nu fie periculoase."),
+        item("Excepții:", "pe paginile locale sau interne (localhost, adrese IP) extensia nu pornește deloc.")
+      ),
+      el("p", { class: "wa-consent-small" }, "Nu vindem date și nu facem reclame sau profilare. Poți retrage acordul oricând din meniul extensiei. ", policy, "."),
+      el("div", { class: "wa-consent-actions" }, later, accept)
+    );
+    const backdrop = el("div", { class: "wa-consent-backdrop" }, box);
+    const close = () => {
+      backdrop.remove();
+      consentDialog = null;
+    };
+    later.onclick = close;
+    backdrop.addEventListener("click", (e) => e.target === backdrop && close());
+    accept.onclick = async () => {
+      await chrome.storage.local.set({ [CONSENT_KEY]: { v: CONSENT_VERSION, at: Date.now() } });
+      state.consent = true;
+      close();
+      startNetwork();
+      toggleToolbar(true);
+    };
+    consentDialog = backdrop;
+    uiHost().appendChild(backdrop);
+    accept.focus();
+  }
+
+  // Tot ce vorbește cu serverul pornește abia după acord (la init sau după „De acord”).
+  let networkStarted = false;
+  async function startNetwork() {
+    if (networkStarted || !state.consent) return;
+    networkStarted = true;
+    await loadExisting();
+    await refreshGlobalTop();
+    setInterval(refreshGlobalTop, 30000); // prinde și voturile date de alții, pe alte pagini, între timp
+  }
+
+  // Retragerea acordului (din popup) oprește imediat extensia pe paginile deschise.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && CONSENT_KEY in changes && !changes[CONSENT_KEY].newValue && state.consent) {
+      location.reload();
+    }
+  });
+
   // ---------- Onboarding (o singură dată, vreodată) ----------
 
   // Tab-ul e acum aproape complet ascuns implicit (vezi CSS) — fără explicație, un
@@ -3426,7 +3551,7 @@
 
     els.topbar.classList.add("wa-peek"); // scoate butonul complet din margine
     setTimeout(() => {
-      const hint = showOnboardingCallout("Aici e Adormis! Apasă (sau Alt+A) ca să desenezi și să comentezi pe pagină.");
+      const hint = showOnboardingCallout("Aici e Adormis! Apasă (sau Alt+A) ca să vezi și să adaugi adnotări pe pagină.");
       setTimeout(() => {
         hint.remove();
         els.topbar.classList.remove("wa-peek");
@@ -3435,7 +3560,11 @@
   }
 
   (async function init() {
-    state.userId = await window.WA_Storage.getUserId();
+    if (isPrivatePage() && !isLocalServer(await window.WA_Storage.getServerUrl())) return;
+    await loadConsent();
+    const identity = await window.WA_Storage.getIdentity();
+    state.userId = identity.id; // secret — doar în cererile proprii de creare/editare/ștergere
+    state.userHash = identity.hash;
     buildOverlay();
     initPenTool();
     initSprayTool();
@@ -3452,8 +3581,6 @@
       .catch(() => {});
     watchForNavigation();
     runOnboarding();
-    await loadExisting();
-    await refreshGlobalTop();
-    setInterval(refreshGlobalTop, 30000); // prinde și voturile date de alții, pe alte pagini, între timp
+    await startNetwork(); // nimic dacă încă nu există acord
   })();
 })();
