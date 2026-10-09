@@ -1,4 +1,4 @@
 {
-  "latest": "0.2.4",
-  "notes": "Securitate și confidențialitate: doar autorul își mai poate modifica/șterge adnotările, ecran de acord la prima folosire, adresa paginilor nu mai e trimisă (doar o amprentă), paginile locale sunt ignorate. Actualizează extensia."
+  "latest": "0.2.5",
+  "notes": "Securitate: datele adnotărilor sunt verificate pe server și la afișare (culori, poziții, mărimi), dependențe actualizate, politică de confidențialitate nouă."
 }

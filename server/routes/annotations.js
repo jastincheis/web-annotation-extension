@@ -40,6 +40,45 @@ function authorHash(authorId) {
   return crypto.createHash("sha256").update(String(authorId)).digest("hex").slice(0, 32);
 }
 
+// Validarea datelor unei adnotări. Valorile ajung în pagina FIECĂRUI vizitator (culori și
+// poziții în stiluri CSS, coordonate în desene SVG) — o „culoare” ca `red; background:url(...)`
+// ar face browserele lor să acceseze o adresă străină. Acceptăm doar forme cunoscute.
+const TYPES = new Set(["pen", "spray", "shape", "text", "bubble", "link", "video_bubble"]);
+const SHAPES = new Set(["circle", "rectangle", "square", "triangle", "diamond", "star", "arrow"]);
+const NUM_FIELDS = ["x", "y", "x1", "y1", "x2", "y2", "dx", "dy", "rotate", "scale", "strokeWidth", "xPct", "yPct", "timestamp", "duration"];
+const MAX_DATA_CHARS = 300_000;
+
+const isNum = (v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 1e7;
+const isStr = (v, max) => typeof v === "string" && v.length <= max;
+
+function validateAnnotation(type, data) {
+  if (!TYPES.has(type)) return "Tip de adnotare necunoscut";
+  if (!data || typeof data !== "object" || Array.isArray(data)) return "Date lipsă";
+  if (JSON.stringify(data).length > MAX_DATA_CHARS) return "Adnotare prea mare";
+  for (const f of NUM_FIELDS) if (data[f] !== undefined && !isNum(data[f])) return `Câmp invalid: ${f}`;
+  if (data.color !== undefined && !/^#[0-9a-fA-F]{3,8}$/.test(String(data.color))) return "Culoare invalidă";
+  if (data.text !== undefined && !isStr(data.text, 2000)) return "Text prea lung";
+  if (data.label !== undefined && !isStr(data.label, 300)) return "Etichetă prea lungă";
+  if (data.url !== undefined && !isStr(data.url, 2000)) return "Link prea lung";
+  if (data.shape !== undefined && !SHAPES.has(data.shape)) return "Formă necunoscută";
+  if (data.d !== undefined && !(isStr(data.d, 250_000) && /^[MLQCZmlqcz0-9.,\s+\-eE]*$/.test(data.d))) return "Desen invalid";
+  if (data.dots !== undefined) {
+    if (!Array.isArray(data.dots) || data.dots.length > 6000) return "Spray invalid";
+    if (!data.dots.every((p) => p && isNum(p.cx) && isNum(p.cy) && isNum(p.r))) return "Spray invalid";
+  }
+  if (data.origin !== undefined && !(data.origin && isNum(data.origin.x) && isNum(data.origin.y))) return "Origine invalidă";
+  if (data.videoRange !== undefined && data.videoRange !== null) {
+    if (!(isNum(data.videoRange.start) && isNum(data.videoRange.end))) return "Interval video invalid";
+  }
+  if (data.anchor !== undefined && data.anchor !== null) {
+    const a = data.anchor;
+    if (typeof a !== "object" || !isStr(a.selector, 3000) || !isNum(a.offsetXPct) || !isNum(a.offsetYPct)) return "Ancoră invalidă";
+    if (a.w !== undefined && !isNum(a.w)) return "Ancoră invalidă";
+    if (a.src !== undefined && !isStr(a.src, 3000)) return "Ancoră invalidă";
+  }
+  return null;
+}
+
 function serialize(row) {
   return {
     id: row.id,
@@ -154,6 +193,9 @@ router.post("/", writeLimiter, (req, res) => {
   if (hasUnsafeLink(data)) {
     return res.status(400).json({ error: "Link must start with http:// or https://" });
   }
+  const invalid = validateAnnotation(type, data);
+  if (invalid) return res.status(400).json({ error: invalid });
+  if (!isStr(url, 3000) || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "Adresă de pagină invalidă" });
 
   const id = crypto.randomUUID();
   const createdAt = Date.now();
@@ -187,6 +229,8 @@ router.patch("/:id", writeLimiter, (req, res) => {
   if (hasUnsafeLink(data)) {
     return res.status(400).json({ error: "Link must start with http:// or https://" });
   }
+  const invalid = validateAnnotation(row.type, data);
+  if (invalid) return res.status(400).json({ error: invalid });
   db.prepare("UPDATE annotations SET data = ? WHERE id = ?").run(JSON.stringify(data), id);
 
   const updated = db.prepare("SELECT * FROM annotations WHERE id = ?").get(id);

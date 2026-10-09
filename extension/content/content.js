@@ -2762,7 +2762,28 @@
     applySvgTransform(svgElement, ann);
   }
 
+  // Datele vin de la server și ajung în stiluri CSS / atribute SVG. Serverul le validează
+  // (vezi validateAnnotation), dar nu ne bazăm doar pe el: o adnotare veche sau trimisă direct
+  // la API cu o „culoare” ca `red; background:url(https://...)` ar face browserul fiecărui
+  // vizitator să acceseze o adresă străină. Ce nu arată ca o valoare validă e înlocuit.
+  const SAFE_COLOR = /^#[0-9a-f]{3,8}$/i;
+  const NUM_FIELDS = ["x", "y", "x1", "y1", "x2", "y2", "dx", "dy", "rotate", "scale", "strokeWidth", "xPct", "yPct", "timestamp", "duration"];
+
+  function sanitizeAnnotation(ann) {
+    const d = ann.data && typeof ann.data === "object" ? ann.data : (ann.data = {});
+    if (d.color !== undefined && !SAFE_COLOR.test(String(d.color))) d.color = "#89CFF0";
+    NUM_FIELDS.forEach((f) => {
+      if (d[f] !== undefined && !(typeof d[f] === "number" && Number.isFinite(d[f]))) d[f] = f === "scale" ? 1 : 0;
+    });
+    if (d.text !== undefined) d.text = String(d.text);
+    if (d.label !== undefined) d.label = String(d.label);
+    if (d.d !== undefined && !/^[MLQCZmlqcz0-9.,\s+\-eE]*$/.test(String(d.d))) d.d = "";
+    if (Array.isArray(d.dots)) d.dots = d.dots.filter((p) => p && [p.cx, p.cy, p.r].every(Number.isFinite));
+    return ann;
+  }
+
   function renderAnnotation(ann) {
+    sanitizeAnnotation(ann);
     switch (ann.type) {
       case "pen": {
         const path = svgEl("path", {
@@ -2884,7 +2905,8 @@
         return;
       }
       slot.className = "wa-lb-slot wa-lb-filled";
-      slot.style.background = ann.data?.color || "#7c3aed";
+      // culoarea vine de la server (Top global) — doar #hex, altfel `url(...)` ar încărca o adresă străină
+      slot.style.background = SAFE_COLOR.test(String(ann.data?.color)) ? ann.data.color : "#7c3aed";
       // tooltip nativ la hover — nume + pagina pe care e adnotarea; click = detalii complete
       slot.title = `${shortLabel(ann)} — pe ${shortenUrl(ann.url)}\nClick pentru detalii`;
       slot.onclick = () => showLeaderboardDetail(ann, slot);
