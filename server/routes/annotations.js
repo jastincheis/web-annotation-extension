@@ -66,6 +66,44 @@ router.get("/", (req, res) => {
 const topCache = new Map(); // limit -> { data, expiresAt }
 const TOP_CACHE_TTL_MS = 10_000;
 
+// GET /api/annotations/stats?url=<url> — câte adnotări sunt, pe tipuri: global (toate
+// paginile) și, dacă e dat `url`, pentru pagina aceea. Cele ascunse prin raportări nu se
+// numără. Partea globală e ținută în cache 30s (se cere la fiecare deschidere a contorului).
+const STATS_CACHE_TTL_MS = 30000;
+let globalStatsCache = null;
+
+function countByType(where, params) {
+  const rows = db
+    .prepare(
+      `SELECT type, COUNT(*) AS n,
+              SUM(CASE WHEN type != 'link' AND json_extract(data, '$.url') LIKE 'http%' THEN 1 ELSE 0 END) AS linked
+       FROM annotations WHERE reports < ? ${where} GROUP BY type`
+    )
+    .all(REPORT_HIDE_THRESHOLD, ...params);
+  const byType = {};
+  let total = 0;
+  let withLink = 0;
+  for (const r of rows) {
+    byType[r.type] = r.n;
+    total += r.n;
+    withLink += r.linked || 0;
+  }
+  return { total, byType, withLink };
+}
+
+router.get("/stats", (req, res) => {
+  if (!globalStatsCache || globalStatsCache.expiresAt < Date.now()) {
+    const global = countByType("", []);
+    global.pages = db
+      .prepare("SELECT COUNT(DISTINCT url) AS n FROM annotations WHERE reports < ?")
+      .get(REPORT_HIDE_THRESHOLD).n;
+    globalStatsCache = { data: global, expiresAt: Date.now() + STATS_CACHE_TTL_MS };
+  }
+  const out = { global: globalStatsCache.data };
+  if (req.query.url) out.page = countByType("AND url = ?", [String(req.query.url)]);
+  res.json(out);
+});
+
 router.get("/top", (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
 

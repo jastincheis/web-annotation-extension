@@ -19,6 +19,15 @@
     return res.json();
   }
 
+  // Câte adnotări sunt, pe tipuri: global și (dacă e dat url) pentru pagina dată.
+  async function getStats(url) {
+    const b = await base();
+    const q = url ? `?url=${encodeURIComponent(url)}` : "";
+    const res = await fetch(`${b}/api/annotations/stats${q}`);
+    if (!res.ok) throw new Error(`Fetch statistici eșuat (${res.status})`);
+    return res.json();
+  }
+
   async function createAnnotation({ url, type, data, authorId }) {
     const b = await base();
     const res = await fetch(`${b}/api/annotations`, {
@@ -96,6 +105,7 @@
   window.WA_Api = {
     listAnnotations,
     listTopGlobal,
+    getStats,
     createAnnotation,
     updateAnnotation,
     vote,

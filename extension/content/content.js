@@ -123,6 +123,7 @@
     document.documentElement.appendChild(els.topbar);
     document.documentElement.appendChild(els.toolbar);
     document.documentElement.appendChild(els.stylePopover);
+    document.documentElement.appendChild(els.statsPopover);
     document.documentElement.appendChild(els.leaderboardPanel);
     document.documentElement.appendChild(els.minePanel);
 
@@ -213,10 +214,17 @@
     els.topBtn = btn("wa-top-btn", "trophy", "Arată / ascunde Topul", () => toggleLeaderboard());
     const closeBtn = btn("wa-close", "close", "Închide bara (Esc)", () => toggleToolbar(false));
 
+    els.counterBtn = el(
+      "button",
+      { class: "wa-dock-btn wa-counter", title: "Câte adnotări sunt (click pentru detalii)", onclick: () => toggleStatsPopover() },
+      el("span", { class: "wa-counter-num" }, "0")
+    );
     const dock = el(
       "div",
       { id: "wa-toolbar", hidden: "true" },
       grip,
+      els.counterBtn,
+      el("span", { class: "wa-dock-sep" }),
       ...tools,
       el("span", { class: "wa-dock-sep" }),
       els.styleBtn,
@@ -226,6 +234,7 @@
       closeBtn
     );
     els.stylePopover = buildStylePopover();
+    els.statsPopover = buildStatsPopover();
     wireDockDragging(dock, grip);
     refreshStyleControls();
     tools[0].classList.add("active"); // „Selectează” = starea de pornire (nicio unealtă activă)
@@ -266,6 +275,134 @@
     );
     stopKeysPropagating(pop);
     return pop;
+  }
+
+  // ---------- Contor de adnotări ----------
+  // Numărul mare din dock = adnotările de pe pagina curentă (același număr apare ca bulină pe
+  // butonul rotund). Click = panou cu defalcarea pe tipuri, pentru pagină și pentru toată
+  // aplicația (de la server, /api/annotations/stats).
+  const COUNT_TYPES = [
+    ["pen", "Desene"],
+    ["spray", "Graffiti"],
+    ["shape", "Forme"],
+    ["text", "Texte"],
+    ["bubble", "Bule"],
+    ["link", "Linkuri"],
+    ["video_bubble", "Bule video"],
+  ];
+  let statsScope = "page"; // "page" | "global"
+  let globalStats = null;
+
+  function pageStats() {
+    const byType = {};
+    let withLink = 0;
+    state.annotations.forEach(({ ann }) => {
+      byType[ann.type] = (byType[ann.type] || 0) + 1;
+      if (hasAttachedLink(ann)) withLink++;
+    });
+    return { total: state.annotations.size, byType, withLink };
+  }
+
+  function formatCount(n) {
+    return n >= 10000 ? Math.round(n / 1000) + "k" : n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n);
+  }
+
+  // Apelat la orice schimbare a listei de adnotări (adăugare, ștergere, navigare, link nou).
+  function refreshCounter() {
+    if (!els.counterBtn) return;
+    const n = state.annotations.size;
+    els.counterBtn.querySelector(".wa-counter-num").textContent = formatCount(n);
+    els.launcherBadge.textContent = formatCount(n);
+    els.launcherBadge.hidden = n === 0;
+    if (!els.statsPopover.hidden) renderStats();
+  }
+
+  function buildStatsPopover() {
+    const tab = (scope, label) =>
+      el("button", { class: "wa-stats-tab", "data-scope": scope, onclick: () => setStatsScope(scope) }, label);
+    return el(
+      "div",
+      { id: "wa-stats-popover", hidden: "true" },
+      el("div", { class: "wa-stats-tabs" }, tab("page", "Pagina asta"), tab("global", "Toată aplicația")),
+      el("div", { class: "wa-stats-body" })
+    );
+  }
+
+  function setStatsScope(scope) {
+    statsScope = scope;
+    renderStats();
+    if (scope === "global") loadGlobalStats();
+  }
+
+  async function loadGlobalStats() {
+    try {
+      globalStats = (await WA_Api.getStats()).global;
+    } catch (err) {
+      console.error("[Adormis] Nu am putut citi statisticile:", err);
+      globalStats = { error: true };
+    }
+    if (statsScope === "global") renderStats();
+  }
+
+  function renderStats() {
+    const pop = els.statsPopover;
+    pop.querySelectorAll(".wa-stats-tab").forEach((b) => b.classList.toggle("active", b.dataset.scope === statsScope));
+    const body = pop.querySelector(".wa-stats-body");
+    body.textContent = "";
+    const data = statsScope === "page" ? pageStats() : globalStats;
+    if (!data) {
+      body.appendChild(el("div", { class: "wa-stats-empty" }, "Se încarcă…"));
+      return;
+    }
+    if (data.error) {
+      body.appendChild(el("div", { class: "wa-stats-empty" }, "Nu am putut citi numerele de pe server."));
+      return;
+    }
+    body.appendChild(el("div", { class: "wa-stats-total" }, data.total.toLocaleString("ro-RO")));
+    body.appendChild(
+      el(
+        "div",
+        { class: "wa-stats-caption" },
+        statsScope === "page"
+          ? data.total === 1 ? "adnotare pe pagina asta" : "adnotări pe pagina asta"
+          : `adnotări pe ${data.pages.toLocaleString("ro-RO")} ${data.pages === 1 ? "pagină" : "pagini"}`
+      )
+    );
+    const max = Math.max(1, ...COUNT_TYPES.map(([t]) => data.byType[t] || 0));
+    COUNT_TYPES.forEach(([type, label]) => {
+      const n = data.byType[type] || 0;
+      if (!n && type === "video_bubble") return; // tip vechi, arătat doar dacă există
+      body.appendChild(
+        el(
+          "div",
+          { class: "wa-stats-row" + (n ? "" : " wa-zero") },
+          el("span", { class: "wa-stats-ico" }, annotationIcon(type)),
+          el("span", { class: "wa-stats-label" }, label),
+          el("span", { class: "wa-stats-bar" }, el("i", { style: `width:${(n / max) * 100}%` })),
+          el("span", { class: "wa-stats-n" }, n.toLocaleString("ro-RO"))
+        )
+      );
+    });
+    if (data.withLink) {
+      body.appendChild(el("div", { class: "wa-stats-foot" }, `🔗 ${data.withLink} cu link atașat`));
+    }
+  }
+
+  function toggleStatsPopover(force) {
+    const open = typeof force === "boolean" ? force : els.statsPopover.hidden;
+    els.statsPopover.hidden = !open;
+    els.counterBtn.classList.toggle("active", open);
+    if (!open) return;
+    renderStats();
+    if (statsScope === "global") loadGlobalStats();
+    positionStatsPopover();
+  }
+
+  function positionStatsPopover() {
+    const r = els.counterBtn.getBoundingClientRect();
+    const w = els.statsPopover.offsetWidth || 260;
+    els.statsPopover.style.left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8) + "px";
+    els.statsPopover.style.top = r.bottom + 8 + "px";
   }
 
   // Culoarea / grosimea / forma alese rămân aceleași pe toate site-urile, și după reload.
@@ -334,7 +471,8 @@
       { id: "wa-toggle-btn", onclick: () => toggleToolbar(), title: "Adormis — desenează pe pagină (Alt+A)", "aria-label": "Deschide Adormis" },
       icon("mark")
     );
-    return el("div", { id: "wa-topbar" }, els.toggleBtn);
+    els.launcherBadge = el("span", { class: "wa-count-badge", hidden: "true" });
+    return el("div", { id: "wa-topbar" }, els.toggleBtn, els.launcherBadge);
   }
 
   // Panou permanent — doar 10 bile statice, lipite de marginea din dreapta, TOP GLOBAL
@@ -412,6 +550,7 @@
       dock.style.transform = "none";
     }
     if (els.stylePopover && !els.stylePopover.hidden) positionStylePopover();
+    if (els.statsPopover && !els.statsPopover.hidden) positionStatsPopover();
     if (state.myPanelOpen) positionMinePanel();
   }
 
@@ -472,6 +611,7 @@
     if (!state.toolbarVisible) {
       setActiveTool(null);
       toggleStylePopover(false);
+      toggleStatsPopover(false);
       setMinePanelOpen(false);
     }
     positionToolbar();
@@ -502,6 +642,7 @@
     if (!state.toolbarVisible || e.altKey || e.ctrlKey || e.metaKey) return false;
     if (e.key === "Escape") {
       if (!els.stylePopover.hidden) toggleStylePopover(false);
+      else if (!els.statsPopover.hidden) toggleStatsPopover(false);
       else if (state.myPanelOpen) setMinePanelOpen(false);
       else if (state.activeTool) setActiveTool(null);
       else toggleToolbar(false);
@@ -518,9 +659,12 @@
     document.addEventListener(
       "pointerdown",
       (e) => {
-        if (els.stylePopover.hidden) return;
-        if (els.stylePopover.contains(e.target) || els.styleBtn.contains(e.target)) return;
-        toggleStylePopover(false);
+        if (!els.stylePopover.hidden && !els.stylePopover.contains(e.target) && !els.styleBtn.contains(e.target)) {
+          toggleStylePopover(false);
+        }
+        if (!els.statsPopover.hidden && !els.statsPopover.contains(e.target) && !els.counterBtn.contains(e.target)) {
+          toggleStatsPopover(false);
+        }
       },
       true
     );
@@ -619,6 +763,7 @@
         ann.data.url = url;
         const entry = state.annotations.get(ann.id);
         if (entry) syncAttachedLink(entry);
+        refreshCounter();
         popover.remove();
       } catch (err) {
         console.error("[Adormis] Nu am putut salva link-ul:", err);
@@ -1120,6 +1265,7 @@
     entry.control?.remove();
     entry.linkChip?.remove();
     state.annotations.delete(id);
+    refreshCounter();
     renderSidebar();
     if (state.myPanelOpen) renderMineList();
   }
@@ -1128,6 +1274,7 @@
     state.annotations.set(ann.id, { ann, el: domEl, control });
     syncAttachedLink(state.annotations.get(ann.id));
     applyVisibility(state.annotations.get(ann.id));
+    refreshCounter();
     wireVideoRange(ann, domEl, control);
     const handles = attachTransformHandles(ann, domEl); // null dacă nu ești autorul
     const reveal = wireHoverReveal(domEl, [control, handles?.resizeHandle, handles?.rotateHandle], {
@@ -1475,7 +1622,7 @@
   // fullscreen-ul — locul lor nu se vede oricum. Cele legate de video sunt deja afișate prin
   // stratul-geamăn (enterVideoFullscreen); aici rămân doar cele noi, desenate în fullscreen.
   let fullscreenUiActive = false;
-  const FS_UI = () => [els.topbar, els.toolbar, els.stylePopover, els.minePanel, els.leaderboardPanel];
+  const FS_UI = () => [els.topbar, els.toolbar, els.stylePopover, els.statsPopover, els.minePanel, els.leaderboardPanel];
 
   function moveUiIntoFullscreen() {
     const fsEl = document.fullscreenElement;
@@ -3237,6 +3384,7 @@
     els.videoElements.innerHTML = "";
     movedIntoVideoLayer.length = 0;
     state.annotations.clear();
+    refreshCounter();
     document.querySelectorAll(".wa-popover, .wa-spray-confirm, .wa-lb-detail").forEach((p) => p.remove());
     setActiveTool(null);
     setMinePanelOpen(false); // lista era pentru pagina veche — se reface la o nouă deschidere

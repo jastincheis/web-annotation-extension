@@ -34,6 +34,9 @@ Endpoint-uri disponibile:
 - `GET /api/annotations?url=<url>&minVotes=0` — listă adnotări pentru o pagină
 - `GET /api/annotations/top?limit=10` — cele mai votate adnotări de pe toate paginile
   (min. 1 vot, `limit` max. 50, cache 10s)
+- `GET /api/annotations/stats?url=<url>` — numărul de adnotări pe tipuri:
+  `{global: {total, byType, withLink, pages}, page: {total, byType, withLink}}`
+  (`page` doar dacă e dat `url`; partea globală are cache 30s)
 - `POST /api/annotations` — creează `{url, type, data, authorId}`
 - `PATCH /api/annotations/:id` — `{authorId, patch}` (mutare sau editare text/link; doar autorul)
 - `DELETE /api/annotations/:id` — `{authorId}` (doar autorul își poate șterge propria adnotare)

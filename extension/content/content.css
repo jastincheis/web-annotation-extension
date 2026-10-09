@@ -804,3 +804,95 @@
 }
 .wa-link-chip:hover { text-decoration: underline; border-color: #7c3aed; }
 .wa-unlink { color: #fca5a5 !important; }
+
+/* ---------- Contor de adnotări ---------- */
+/* Numărul mare din dock (adnotările de pe pagina curentă) */
+.wa-dock-btn.wa-counter {
+  width: auto;
+  min-width: 40px;
+  padding: 0 9px;
+  background: linear-gradient(140deg, rgba(124, 58, 237, 0.35), rgba(236, 72, 153, 0.35));
+}
+.wa-dock-btn.wa-counter:hover { background: linear-gradient(140deg, rgba(124, 58, 237, 0.55), rgba(236, 72, 153, 0.55)); }
+.wa-dock-btn.wa-counter.active { background: linear-gradient(140deg, #7c3aed, #ec4899); }
+.wa-counter-num {
+  font: 800 17px/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: white;
+}
+
+/* Bulina cu numărul, pe butonul rotund de pe margine */
+#wa-topbar { position: fixed; }
+.wa-count-badge {
+  position: absolute;
+  top: -6px;
+  left: -8px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #1e1b2e;
+  border: 1.5px solid #ec4899;
+  color: white;
+  font: 800 11px/17px system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.wa-count-badge[hidden] { display: none; }
+
+/* Panoul cu defalcarea pe tipuri */
+#wa-stats-popover {
+  position: fixed;
+  width: 260px;
+  padding: 10px 12px 12px;
+  background: #1e1b2e;
+  border: 1px solid #3d3560;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  font: 500 12.5px/1.3 system-ui, sans-serif;
+  color: #eae6ff;
+  pointer-events: auto;
+  cursor: default;
+  z-index: 2147483003;
+}
+#wa-stats-popover[hidden] { display: none; }
+.wa-stats-tabs { display: flex; background: #2a2545; border-radius: 9px; padding: 3px; margin-bottom: 10px; }
+.wa-stats-tab {
+  flex: 1;
+  margin: 0;
+  border: 0;
+  padding: 5px 4px;
+  border-radius: 7px;
+  background: transparent;
+  color: #a39cc4;
+  font: 600 12px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.wa-stats-tab.active { background: #362e5c; color: #eae6ff; }
+.wa-stats-total {
+  font: 800 40px/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  background: linear-gradient(140deg, #a78bfa, #f472b6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.wa-stats-caption { color: #a39cc4; margin: 2px 0 10px; }
+.wa-stats-row {
+  display: grid;
+  grid-template-columns: 20px 74px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+.wa-stats-row.wa-zero { opacity: 0.45; }
+.wa-stats-ico { text-align: center; }
+.wa-stats-bar { height: 6px; border-radius: 99px; background: #2a2545; overflow: hidden; }
+.wa-stats-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #7c3aed, #ec4899); }
+.wa-stats-n { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wa-stats-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid #3d3560; color: #93c5fd; }
+.wa-stats-empty { padding: 14px 0; color: #a39cc4; text-align: center; }
