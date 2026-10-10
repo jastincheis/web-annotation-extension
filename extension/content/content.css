@@ -551,6 +551,11 @@
 .wa-dock-btn.wa-top-btn .wa-ico { color: #f5c542; }
 .wa-dock-btn.wa-top-btn.active { background: #2a2545; }
 .wa-dock-btn.wa-close { color: #a39cc4; }
+/* Bulina de versiune din bară: verde = la zi, portocaliu (pulsând ușor) = versiune nouă */
+.wa-version-dot { width: 9px; height: 9px; border-radius: 50%; background: #6b6488; }
+.wa-version.wa-uptodate .wa-version-dot { background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18); }
+.wa-version.wa-outdated .wa-version-dot { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25); animation: wa-version-pulse 1.6s ease-in-out infinite; }
+@keyframes wa-version-pulse { 50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.08); } }
 
 .wa-dock-sep {
   width: 1px;

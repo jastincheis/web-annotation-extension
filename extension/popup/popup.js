@@ -2,21 +2,42 @@ const DEFAULT_SERVER_URL = "https://web-annotation-extension-production.up.railw
 
 const serverInput = document.getElementById("server-url");
 const statusEl = document.getElementById("status");
-const updateBanner = document.getElementById("update-banner");
-const updateText = document.getElementById("update-text");
 
 chrome.storage.local.get("wa_server_url").then((r) => {
   serverInput.value = r.wa_server_url || DEFAULT_SERVER_URL;
 });
 
-// Dacă background.js a găsit o versiune mai nouă pe server decât cea instalată local,
-// arată mesajul aici — e aceeași informație ca beculețul de pe iconiță, dar cu detalii.
-chrome.storage.local.get("wa_update_available").then((r) => {
-  const info = r.wa_update_available;
-  if (!info) return;
-  updateText.textContent = `Versiune nouă: v${info.latest} (ai v${info.current}).${info.notes ? " " + info.notes : ""}`;
-  updateBanner.hidden = false;
-});
+// Eticheta de versiune: verde = la zi, portocaliu = există una nouă (cu pașii de actualizare).
+// Se verifică direct la server la fiecare deschidere a meniului, nu doar la ora din background.
+const versionPill = document.getElementById("version-pill");
+// Compară numeric "0.2.13" cu "0.2.9" (ca text, "0.2.9" ar părea mai nou) — ca în background.js.
+function isNewerVersion(remote, local) {
+  const r = String(remote).split(".").map(Number);
+  const l = String(local).split(".").map(Number);
+  for (let i = 0; i < Math.max(r.length, l.length); i++) {
+    if ((r[i] || 0) !== (l[i] || 0)) return (r[i] || 0) > (l[i] || 0);
+  }
+  return false;
+}
+(async () => {
+  const current = chrome.runtime.getManifest().version;
+  try {
+    const { wa_server_url } = await chrome.storage.local.get("wa_server_url");
+    const res = await fetch(`${(wa_server_url || DEFAULT_SERVER_URL).replace(/\/$/, "")}/api/version`);
+    const { latest, notes } = await res.json();
+    const outdated = isNewerVersion(latest, current);
+    if (outdated) {
+      versionPill.classList.add("outdated");
+      versionPill.textContent = `⬆ Versiune nouă: v${latest} (ai v${current}). ${notes || ""} Actualizare: git pull sau ZIP nou de pe GitHub, apoi ↻ la Adormis în chrome://extensions.`;
+    } else {
+      versionPill.classList.add("ok");
+      versionPill.textContent = `✓ La zi · v${current}`;
+    }
+    chrome.runtime.sendMessage({ type: "WA_CHECK_VERSION" }).catch(() => {});
+  } catch {
+    versionPill.textContent = `v${current} · nu pot verifica acum (serverul nu răspunde)`;
+  }
+})();
 
 document.getElementById("save-server").addEventListener("click", async () => {
   const url = serverInput.value.trim().replace(/\/$/, "") || DEFAULT_SERVER_URL;

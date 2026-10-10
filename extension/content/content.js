@@ -252,6 +252,8 @@
     els.mineBtn = btn("wa-mine-btn", "pin", "Adnotările mele pe pagina asta", () => setMinePanelOpen(!state.myPanelOpen));
     els.topBtn = btn("wa-top-btn", "trophy", "Arată / ascunde Topul", () => toggleLeaderboard());
     const closeBtn = btn("wa-close", "close", "Închide bara (Esc)", () => toggleToolbar(false));
+    // Bulina de versiune: verde = la zi, portocaliu = există una nouă (click = detalii).
+    els.versionBtn = el("button", { class: "wa-dock-btn wa-version", onclick: showVersionInfo }, el("span", { class: "wa-version-dot" }));
 
     els.counterBtn = el(
       "button",
@@ -270,6 +272,7 @@
       el("span", { class: "wa-dock-sep" }),
       els.mineBtn,
       els.topBtn,
+      els.versionBtn,
       closeBtn
     );
     els.stylePopover = buildStylePopover();
@@ -495,6 +498,65 @@
     pop.style.top = r.bottom + 8 + "px";
   }
 
+  // ---------- Versiunea extensiei ----------
+  // background.js verifică la server (la o oră + la cerere) și scrie wa_version_status.
+  const isNewerVersion = (remote, local) => {
+    const r = String(remote).split(".").map(Number);
+    const l = String(local).split(".").map(Number);
+    for (let i = 0; i < Math.max(r.length, l.length); i++) if ((r[i] || 0) !== (l[i] || 0)) return (r[i] || 0) > (l[i] || 0);
+    return false;
+  };
+
+  // Verificarea din background poate lipsi (service worker vechi, încă nereîncărcat) — dacă nu
+  // există o stare din ultima oră pentru versiunea instalată, întrebăm serverul direct de aici.
+  async function versionStatus() {
+    const current = chrome.runtime.getManifest().version;
+    let st = null;
+    try {
+      st = (await chrome.storage.local.get("wa_version_status")).wa_version_status;
+    } catch {}
+    if (st && st.current === current && Date.now() - st.checkedAt < 60 * 60 * 1000) return st;
+    if (!state.consent) return st; // fără acord nu întrebăm serverul nimic
+    try {
+      const res = await fetch(`${await WA_Storage.getServerUrl()}/api/version`);
+      const { latest, notes } = await res.json();
+      st = { current, latest: latest || current, notes: notes || "", outdated: isNewerVersion(latest, current), checkedAt: Date.now() };
+      await chrome.storage.local.set({ wa_version_status: st });
+    } catch {}
+    return st;
+  }
+
+  async function refreshVersionDot() {
+    if (!els.versionBtn) return;
+    const st = await versionStatus();
+    const current = chrome.runtime.getManifest().version;
+    const outdated = !!st?.outdated && st.current === current;
+    els.versionBtn.classList.toggle("wa-outdated", outdated);
+    els.versionBtn.classList.toggle("wa-uptodate", !!st && !outdated);
+    els.versionBtn.title = !st
+      ? `Adormis v${current}`
+      : outdated
+        ? `Versiune nouă: v${st.latest} (ai v${current}) — click pentru detalii`
+        : `Ești la zi · v${current}`;
+  }
+
+  async function showVersionInfo() {
+    const st = await versionStatus();
+    const current = chrome.runtime.getManifest().version;
+    if (st?.outdated && st.current === current) {
+      showSaveError(
+        `Versiune nouă: v${st.latest} (ai v${current}). ${st.notes || ""} Actualizare: git pull sau ZIP nou de pe GitHub, apoi ↻ la Adormis în chrome://extensions și reîncarci pagina.`
+      );
+    } else {
+      showSaveError(`Ești la zi: Adormis v${current}.`, { ok: true });
+    }
+    chrome.runtime.sendMessage({ type: "WA_CHECK_VERSION" }).catch(() => {});
+  }
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && "wa_version_status" in changes) refreshVersionDot();
+  });
+
   function toggleLeaderboard(force) {
     const show = typeof force === "boolean" ? force : els.leaderboardPanel.hidden;
     els.leaderboardPanel.hidden = !show;
@@ -696,6 +758,12 @@
     state.toolbarVisible = typeof forceShow === "boolean" ? forceShow : !state.toolbarVisible;
     els.toolbar.hidden = !state.toolbarVisible;
     els.toggleBtn?.classList.toggle("active", state.toolbarVisible);
+    if (state.toolbarVisible) {
+      refreshVersionDot(); // starea știută acum…
+      try {
+        chrome.runtime.sendMessage({ type: "WA_CHECK_VERSION" }).catch(() => {}); // …și o verificare proaspătă
+      } catch {}
+    }
     if (!state.toolbarVisible) {
       setActiveTool(null);
       toggleStylePopover(false);
