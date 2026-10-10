@@ -579,8 +579,8 @@
 
   // Panou permanent — doar 10 bile statice, lipite de marginea din dreapta, TOP GLOBAL
   // de pe toate paginile adnotate (vezi refreshGlobalTop). Colorate dacă locul e ocupat,
-  // gri dacă nu. Hover pe o bilă = tooltip nativ cu numele și pagina; click = detalii
-  // complete (și, dacă adnotarea e pe altă pagină, un buton ca să sari acolo).
+  // gri dacă nu. Hover pe o bilă = detaliile complete (și, dacă adnotarea e pe altă
+  // pagină, un buton ca să sari acolo); click pe bilă = mergi direct la adnotare.
   function buildLeaderboardPanel() {
     els.leaderboardSlots = [];
     els.topModeBtn = el("button", { class: "wa-lb-mode", onclick: () => setTopMode(state.topMode === "page" ? "global" : "page") });
@@ -1896,6 +1896,51 @@
     return (fullscreenUiActive && document.fullscreenElement) || document.documentElement;
   }
 
+  // Bara „OK / Anulează” stă lipită chiar sub elementul pe care îl desenezi/scrii (sau
+  // deasupra lui, dacă jos nu mai e loc) și îl urmărește cât crește, se mută sau derulezi.
+  // Cât ții mouse-ul apăsat (desenezi) devine transparentă la click, ca să nu-ți taie cursa.
+  // Fără element încă vizibil, rămâne jos pe mijloc (poziția din CSS).
+  let confirmPointerDown = false;
+  window.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest?.(".wa-spray-confirm")) confirmPointerDown = true;
+  }, true);
+  window.addEventListener("pointerup", () => (confirmPointerDown = false), true);
+  window.addEventListener("pointercancel", () => (confirmPointerDown = false), true);
+
+  function showConfirmBarNear(bar, getTarget) {
+    uiHost().appendChild(bar);
+    let last = "";
+    const tick = () => {
+      if (!bar.isConnected) return;
+      const target = getTarget();
+      const rect = target?.isConnected ? target.getBoundingClientRect() : null;
+      let pos = "";
+      if (rect && (rect.width || rect.height || rect.left || rect.top)) {
+        const gap = 10;
+        const margin = 8;
+        const bw = bar.offsetWidth;
+        const bh = bar.offsetHeight;
+        const left = Math.min(Math.max(rect.left + rect.width / 2 - bw / 2, margin), window.innerWidth - bw - margin);
+        let top = rect.bottom + gap;
+        if (top + bh > window.innerHeight - margin) top = rect.top - bh - gap;
+        top = Math.min(Math.max(top, margin), window.innerHeight - bh - margin);
+        pos = `${Math.round(left)},${Math.round(top)}`;
+      }
+      if (pos !== last) {
+        last = pos;
+        if (pos) {
+          const [l, t] = pos.split(",");
+          Object.assign(bar.style, { left: l + "px", top: t + "px", bottom: "auto", transform: "none" });
+        } else {
+          Object.assign(bar.style, { left: "", top: "", bottom: "", transform: "" });
+        }
+      }
+      bar.classList.toggle("wa-confirm-passive", confirmPointerDown);
+      requestAnimationFrame(tick);
+    };
+    tick();
+  }
+
   // Mută UI-ul și stratul de desen în fullscreen (și înapoi), ca să poți desena direct peste
   // film. Adnotările care NU țin de video (de pe restul paginii) se ascund cât ține
   // fullscreen-ul — locul lor nu se vede oricum. Cele legate de video sunt deja afișate prin
@@ -2067,7 +2112,7 @@
         el("button", { class: "wa-spray-ok", onclick: () => finishSession() }, "✓ OK, gata"),
         el("button", { class: "wa-spray-cancel", onclick: () => cancelSession() }, "✕ Anulează")
       );
-      uiHost().appendChild(confirmBar);
+      showConfirmBarNear(confirmBar, () => path);
     }
 
     function hideConfirmBar() {
@@ -2200,7 +2245,7 @@
         el("button", { class: "wa-spray-ok", onclick: () => finishSession() }, "✓ OK, gata"),
         el("button", { class: "wa-spray-cancel", onclick: () => cancelSession() }, "✕ Anulează")
       );
-      uiHost().appendChild(confirmBar);
+      showConfirmBarNear(confirmBar, () => group);
     }
 
     function hideConfirmBar() {
@@ -2417,7 +2462,7 @@
         el("button", { class: "wa-spray-ok", onclick: () => finishPending() }, "✓ OK, gata"),
         el("button", { class: "wa-spray-cancel", onclick: () => cancelPending() }, "✕ Anulează")
       );
-      uiHost().appendChild(confirmBar);
+      showConfirmBarNear(confirmBar, () => preview);
     }
 
     function hideConfirmBar() {
@@ -2546,7 +2591,7 @@
       el("button", { class: "wa-spray-ok" }, "✓ OK, gata"),
       el("button", { class: "wa-spray-cancel" }, "✕ Anulează")
     );
-    uiHost().appendChild(confirmBar);
+    showConfirmBarNear(confirmBar, () => box);
 
     function cleanup() {
       confirmBar.remove();
@@ -2623,7 +2668,7 @@
       el("button", { class: "wa-spray-ok" }, "✓ OK, gata"),
       el("button", { class: "wa-spray-cancel" }, "✕ Anulează")
     );
-    uiHost().appendChild(confirmBar);
+    showConfirmBarNear(confirmBar, () => bubble);
 
     function cleanup() {
       confirmBar.remove();
@@ -3168,6 +3213,8 @@
     els.leaderboardSlots.forEach((slot, i) => {
       const ann = top10[i];
       slot.onclick = null;
+      slot.onmouseenter = null;
+      slot.onmouseleave = null;
       if (!ann) {
         slot.className = "wa-lb-slot";
         slot.style.background = "";
@@ -3178,8 +3225,14 @@
       // culoarea vine de la server (Top global) — doar #hex, altfel `url(...)` ar încărca o adresă străină
       slot.style.background = SAFE_COLOR.test(String(ann.data?.color)) ? ann.data.color : "#7c3aed";
       // tooltip nativ la hover — nume + pagina pe care e adnotarea; click = detalii complete
-      slot.title = `${shortLabel(ann)} — pe ${shortenUrl(ann.url)}\nClick pentru detalii`;
-      slot.onclick = () => showLeaderboardDetail(ann, slot);
+      // hover = detaliile complete (fără click); click = mergi direct la adnotare
+      slot.title = "";
+      slot.onmouseenter = () => {
+        cancelLbDetailHide();
+        showLeaderboardDetail(ann, slot);
+      };
+      slot.onmouseleave = scheduleLbDetailHide;
+      slot.onclick = () => goToAnnotation(ann);
     });
   }
 
@@ -3198,7 +3251,21 @@
     renderSidebar();
   }
 
-  // Popover cu detalii la click pe o cifră: ce e, cine a pus-o, pe ce pagină, câte voturi.
+  // Detaliile apar la hover pe cifră și dispar la scurt timp după ce mouse-ul pleacă
+  // de pe cifră ȘI de pe detalii (pauza lasă timp să ajungi la butoanele din ele).
+  let lbDetailHideTimer = null;
+  function cancelLbDetailHide() {
+    clearTimeout(lbDetailHideTimer);
+    lbDetailHideTimer = null;
+  }
+  function scheduleLbDetailHide() {
+    cancelLbDetailHide();
+    lbDetailHideTimer = setTimeout(() => {
+      document.querySelectorAll(".wa-lb-detail").forEach((p) => p.remove());
+    }, 250);
+  }
+
+  // Popover cu detalii la hover pe o cifră: ce e, cine a pus-o, pe ce pagină, câte voturi.
   // Fiind top GLOBAL, adnotarea poate fi de pe cu totul altă pagină decât cea deschisă —
   // atunci arătăm un buton ca să sari acolo, în loc să încercăm s-o găsim pe pagina asta.
   function showLeaderboardDetail(ann, anchorEl) {
@@ -3225,7 +3292,9 @@
       rows.push(el("div", { class: "wa-lb-detail-row" }, `🎬 la ${formatTime(ann.data.videoRange.start)}–${formatTime(ann.data.videoRange.end)}`));
     }
     rows.push(el("div", { class: "wa-lb-detail-row" }, `${ann.votes} 👍`));
-    if (!onThisPage) {
+    if (onThisPage) {
+      rows.push(el("div", { class: "wa-lb-detail-hint" }, "Click pe cifră = du-mă la ea"));
+    } else {
       rows.push(
         el(
           "button",
@@ -3242,22 +3311,12 @@
     const detail = el(
       "div",
       { class: "wa-lb-detail", style: `top:${rect.top}px; right:${window.innerWidth - rect.left + 10}px;` },
-      el("button", { class: "wa-lb-detail-close", onclick: () => detail.remove() }, "✕"),
       ...rows
     );
+    detail.addEventListener("mouseenter", cancelLbDetailHide);
+    detail.addEventListener("mouseleave", scheduleLbDetailHide);
     uiHost().appendChild(detail);
     clampToViewport(detail);
-
-    if (onThisPage) goToAnnotation(ann); // la poziția exactă: derulează, evidențiază (și sare în video)
-
-    setTimeout(() => {
-      document.addEventListener("click", function onDocClick(e) {
-        if (!detail.contains(e.target) && e.target !== anchorEl) {
-          detail.remove();
-          document.removeEventListener("click", onDocClick);
-        }
-      });
-    }, 0);
   }
 
   // ---------- Panou "Ale mele" ----------

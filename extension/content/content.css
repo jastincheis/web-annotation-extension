@@ -430,14 +430,7 @@
 }
 .wa-lb-detail-author:hover { text-decoration: underline; }
 .wa-lb-detail-text { margin-top: 6px; font-weight: 600; color: #eae6ff; }
-.wa-lb-detail-close {
-  float: right;
-  background: none;
-  border: none;
-  color: #c9c3e6;
-  cursor: pointer;
-  font-size: 12px;
-}
+.wa-lb-detail-hint { margin-top: 6px; color: #8f87b8; font-size: 11px; }
 .wa-lb-detail-open {
   display: block;
   width: 100%;
@@ -868,6 +861,7 @@
   font-size: 13px;
   font-weight: 600;
 }
+.wa-spray-confirm.wa-confirm-passive { pointer-events: none; opacity: 0.35; }
 .wa-spray-confirm .wa-spray-ok { background: #22c55e; color: #0b1a0f; }
 .wa-spray-confirm .wa-spray-cancel { background: #362e5c; color: #eae6ff; }
 

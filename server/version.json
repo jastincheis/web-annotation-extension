@@ -1,4 +1,4 @@
 {
-  "latest": "0.2.16",
-  "notes": "Hover exact pe desen: vezi like/dislike/raportare pentru ce e sub mouse, golurile nu mai blochează; adnotarea selectată strălucește."
+  "latest": "0.2.17",
+  "notes": "Topul arată detaliile la hover (click = mergi la adnotare); bara OK/Anulează apare chiar lângă ce desenezi sau scrii."
 }
