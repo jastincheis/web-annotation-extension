@@ -74,6 +74,12 @@
   transform-box: fill-box;
   transform-origin: center;
 }
+/* Ca la #wa-elements-layer: stratul e "none" (click-urile trec spre player), dar adnotările
+   din el (link, text, bulă) trebuie să primească click — pointer-events se moștenește, iar
+   fără regula asta, în fullscreen, click-ul pe un link ajungea la YouTube (play/pauză). */
+#wa-video-elements-layer > * {
+  pointer-events: auto;
+}
 
 #wa-elements-layer {
   position: absolute;
@@ -524,16 +530,24 @@
   color: white;
   opacity: 0;
   transition: opacity 0.12s;
-  transform: translate(-4px, -100%);
+  /* centrat sub marginea de jos a adnotării — vezi placeControlAtElement în JS */
+  transform: translate(-50%, 4px);
   white-space: nowrap;
+}
+/* La adnotările proprii, în colțurile de jos stau mânerele de zoom/rotire (20px, centrate pe
+   colț) — meniul coboară sub ele, ca să nu se suprapună la adnotările înguste. */
+.wa-vote.wa-vote-own {
+  transform: translate(-50%, 12px);
 }
 /* Selector cu #wa-elements-layer (nu doar .wa-vote) — altfel regula generică
    "#wa-elements-layer > * { pointer-events: auto }" de mai sus, fiind mai specifică
    (are un ID), ar câștiga și ar lăsa controlul clickabil chiar și cât e invizibil. */
-#wa-elements-layer > .wa-vote {
+#wa-elements-layer > .wa-vote,
+#wa-video-elements-layer > .wa-vote {
   pointer-events: none;
 }
-#wa-elements-layer > .wa-vote.wa-visible-hover {
+#wa-elements-layer > .wa-vote.wa-visible-hover,
+#wa-video-elements-layer > .wa-vote.wa-visible-hover {
   pointer-events: auto;
   opacity: 1;
 }

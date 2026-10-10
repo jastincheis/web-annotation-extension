@@ -904,13 +904,10 @@
 
   function attachVoteControl(ann, x, y) {
     const canDelete = isMine(ann);
-    // Pe adnotările proprii: doar scorul (fără 👍/👎/🚩) — votezi și raportezi ce scriu alții.
+    // Pe adnotările proprii: nimic despre voturi (nici 👍/👎/🚩, nici scorul) — doar 🔗/🗑 de mai jos.
+    // Votezi și raportezi ce scriu alții; câte voturi ai primit vezi în „Top” și „Ale mele”.
     const control = canDelete
-      ? el(
-          "div",
-          { class: "wa-vote", style: `left:${x}px; top:${y}px;` },
-          el("span", { class: "wa-count", title: "Voturile primite" }, `${ann.votes} 👍`)
-        )
+      ? el("div", { class: "wa-vote wa-vote-own", style: `left:${x}px; top:${y}px;` })
       : el(
           "div",
           { class: "wa-vote", style: `left:${x}px; top:${y}px;` },
@@ -1321,7 +1318,8 @@
     const entry = state.annotations.get(id);
     if (!entry) return;
     entry.ann.votes = votes;
-    if (entry.control) entry.control.querySelector(".wa-count").textContent = String(votes);
+    const count = entry.control?.querySelector(".wa-count");
+    if (count) count.textContent = String(votes);
     applyVisibility(entry);
     refreshGlobalTop(); // un vot poate schimba și clasamentul GLOBAL, nu doar cel local
   }
@@ -1387,12 +1385,30 @@
     wireVideoRange(ann, domEl, control);
     const handles = attachTransformHandles(ann, domEl); // null dacă nu ești autorul
     const reveal = wireHoverReveal(domEl, [control, handles?.resizeHandle, handles?.rotateHandle], {
-      onShow: handles?.startTracking,
+      onShow: () => {
+        placeControlAtElement(domEl, control);
+        handles?.startTracking();
+      },
       onHide: handles?.stopTracking,
     });
     if (handles) wireHandleDragging(ann, domEl, handles, reveal);
     renderSidebar(); // clasamentul e mereu la zi, fără acțiune manuală
     if (state.myPanelOpen) renderMineList(); // panoul "Ale mele" prinde imediat noua adnotare
+  }
+
+  // Controlul de vot stă centrat sub dreptunghiul REAL al adnotării
+  // (getBoundingClientRect), calculat abia când apare. Punctul salvat (x/y, primul punct al
+  // desenului) nu e același lucru: la un cerc e colțul gol al cutiei, iar zoom-ul/rotirea/
+  // scalarea cu pagina mută desenul față de el — meniul apărea „mai departe” de obiect.
+  // Mijlocul marginii de jos e atins de orice formă (cerc, linie, text), colțul nu.
+  // În stratul de fullscreen (#wa-video-root, fixed) coordonatele sunt de ecran, fără scroll.
+  function placeControlAtElement(domEl, control) {
+    if (!control) return;
+    const r = domEl.getBoundingClientRect();
+    if (!r.width && !r.height) return; // ascunsă (ex. în afara intervalului video)
+    const inVideoLayer = control.parentNode === els.videoElements;
+    control.style.left = r.left + r.width / 2 + (inVideoLayer ? 0 : window.scrollX) + "px";
+    control.style.top = r.bottom + (inVideoLayer ? 0 : window.scrollY) + "px";
   }
 
   // Aplică translate (poziție, din drag/ancoră) + rotate + scale pe un element SVG
@@ -1788,7 +1804,7 @@
     if (!sel) return false;
     const video = getMainVideo();
     try {
-      return !!video && document.querySelector(sel) === video;
+      return !!video && anchorTarget(ann.data.anchor) === video;
     } catch {
       return false;
     }
@@ -1865,29 +1881,13 @@
         const dy = resolved.y - scrollY - origin.y;
         ann._fit = resolved.fit;
         entry.el.style.transform = svgTransformFor(entry.el, ann, dx, dy);
-        if (entry.control) {
-          entry.control.style.left = origin.x + dx + "px";
-          entry.control.style.top = origin.y + dy + "px";
-        }
       } else {
-        // păstrăm offset-ul curent control<->element (stabilit la creare), în loc
-        // să presupunem unul fix — robust indiferent cum a fost poziționat control-ul.
-        const beforeElLeft = parseFloat(entry.el.style.left) || 0;
-        const beforeElTop = parseFloat(entry.el.style.top) || 0;
-        const offsetX = entry.control ? (parseFloat(entry.control.style.left) || 0) - beforeElLeft : 0;
-        const offsetY = entry.control ? (parseFloat(entry.control.style.top) || 0) - beforeElTop : 0;
-
-        const newLeft = resolved.x - scrollX;
-        const newTop = resolved.y - scrollY;
-        entry.el.style.left = newLeft + "px";
-        entry.el.style.top = newTop + "px";
+        entry.el.style.left = resolved.x - scrollX + "px";
+        entry.el.style.top = resolved.y - scrollY + "px";
         ann._fit = resolved.fit;
         applyDomTransform(entry.el, ann);
-        if (entry.control) {
-          entry.control.style.left = newLeft + offsetX + "px";
-          entry.control.style.top = newTop + offsetY + "px";
-        }
       }
+      placeControlAtElement(entry.el, entry.control);
     });
     positionAllAttachedLinks();
   }
@@ -2695,8 +2695,14 @@
     // s-o poată anula la timp — altfel orice dublu-click de editare ar deschide și
     // link-ul o dată pe drum, înainte să apuce browserul să recunoască dublu-click-ul.
     let openTimer = null;
+    // În fullscreen badge-ul stă înăuntrul player-ului: fără stopPropagation, YouTube/Netflix
+    // primesc și ei click-ul (play/pauză, ascund controalele) în loc să se deschidă link-ul.
+    ["pointerdown", "mousedown"].forEach((type) =>
+      badge.addEventListener(type, (e) => e.stopPropagation())
+    );
     badge.addEventListener("click", (e) => {
       e.preventDefault(); // navigăm noi manual (vezi mai jos), nu prin href-ul nativ
+      e.stopPropagation();
       if (openTimer) return; // al doilea click al unui dublu-click — nu programa încă un tab
       openTimer = setTimeout(() => {
         openTimer = null;
@@ -2818,11 +2824,7 @@
     control.style.display = "none"; // arătat doar cât bula e vizibilă, mai jos
     video.addEventListener("timeupdate", () => {
       control.style.display = bubble.classList.contains("wa-visible") ? "" : "none";
-      if (bubble.classList.contains("wa-visible")) {
-        const r = bubble.getBoundingClientRect();
-        control.style.left = r.left + window.scrollX + "px";
-        control.style.top = r.top + window.scrollY + "px";
-      }
+      if (bubble.classList.contains("wa-visible")) placeControlAtElement(bubble, control);
     });
 
     registerAnnotation(ann, bubble, control);
@@ -3266,7 +3268,10 @@
     const parts = [];
     let node = elm;
     let depth = 0;
-    while (node && node.nodeType === 1 && node !== document.body && depth < 12) {
+    // Fără plafon mic de adâncime: pe X <video>-ul e la ~38 de niveluri sub <body>, iar un drum
+    // tăiat la 12 dar prefixat cu "body > " nu mai nimerea nimic — adnotarea nu mai urmărea
+    // video-ul (nici la fullscreen, nici la resize). 80 e doar o plasă de siguranță.
+    while (node && node.nodeType === 1 && node !== document.body && depth < 80) {
       if (node.id && !isGeneratedId(node.id)) {
         const idSel = `#${CSS.escape(node.id)}`;
         if (document.querySelectorAll(idSel).length === 1) {
@@ -3383,14 +3388,21 @@
   }
 
   // La afișare/redimensionare: unde e reperul ACUM → poziția (în pagină) unde trebuie desenată adnotarea.
-  function resolveAnchor(anchor) {
-    if (!anchor?.selector) return null;
-    let target;
+  // Elementul-reper al unei ancore. Ancorele puse peste video țintesc <video>-ul; dacă drumul
+  // salvat nu-l mai găsește (salvat trunchiat de versiunile ≤ 0.2.7 pe pagini adânci ca X, sau
+  // player reconstruit de site), cădem pe video-ul principal — e același, pe o pagină cu un player.
+  function anchorTarget(anchor) {
+    let target = null;
     try {
       target = document.querySelector(anchor.selector);
-    } catch {
-      return null;
-    }
+    } catch {}
+    if (!target && /(^|[\s>])video:nth-of-type\(\d+\)$/.test(anchor.selector)) target = getMainVideo();
+    return target;
+  }
+
+  function resolveAnchor(anchor) {
+    if (!anchor?.selector) return null;
+    let target = anchorTarget(anchor);
     // Poză: dacă selectorul nu mai nimerește aceeași imagine (layout schimbat, rânduri
     // reordonate — ex. meniul Netflix), o căutăm după adresa ei.
     if (anchor.src && !(target?.localName === "img" && imagePath(target) === anchor.src)) {
@@ -3455,22 +3467,18 @@
         ann.data.dx = dx;
         ann.data.dy = dy;
         applySvgTransform(domEl, ann);
-        if (control) {
-          control.style.left = origin.x + dx + "px";
-          control.style.top = origin.y + dy + "px";
-        }
       } else {
-        if (control) {
-          control.style.left = parseFloat(control.style.left) + (resolved.x - ann.data.x) + "px";
-          control.style.top = parseFloat(control.style.top) + (resolved.y - ann.data.y) + "px";
-        }
         ann.data.x = resolved.x;
         ann.data.y = resolved.y;
         domEl.style.left = resolved.x + "px";
         domEl.style.top = resolved.y + "px";
         applyDomTransform(domEl, ann);
       }
+      placeControlAtElement(domEl, control);
     });
+    // Cele mutate în stratul de fullscreen (fixed) au nevoie de coordonate de ecran, nu de pagină —
+    // altfel un resize (intrarea în fullscreen e unul) le lăsa decalate cu scroll-ul paginii.
+    repositionVideoLayerAnnotations();
     positionAllAttachedLinks();
   }
 

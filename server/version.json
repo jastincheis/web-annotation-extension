@@ -1,4 +1,4 @@
 {
-  "latest": "0.2.7",
-  "notes": "Poți vota adnotările altora și când sunteți pe aceeași rețea; nu-ți mai poți vota propriile adnotări."
+  "latest": "0.2.8",
+  "notes": "Linkurile și voturile merg în fullscreen; meniul stă lipit sub comentariu; pe X comentariile rămân pe video și în fullscreen; fără like pe comentariile tale."
 }
