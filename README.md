@@ -45,7 +45,8 @@ Endpoint-uri disponibile:
 - `authorId` e secretul autorului (generat local de extensie): nu apare în niciun răspuns —
   răspunsurile conțin doar `authorHash` (primele 32 de caractere hex din SHA-256(authorId))
 - `POST /api/annotations/:id/vote` — `{voterId, direction: "up"|"down"}` (un vot pe adnotare
-  per votant și per adresă IP, amprentată cu `IP_HASH_SECRET`)
+  per votant; autorul nu-și poate vota adnotările (403); cel mult 5 votanți per adresă IP,
+  amprentată cu `IP_HASH_SECRET` (429 peste)
 - `POST /api/annotations/:id/report` — `{reporterId, reason, details?, goodFaith: true}`;
   `reason` ∈ `illegal|hate|harassment|personal_data|sexual|spam|copyright|other`; o raportare
   per raportor și per IP; auto-ascundere la 5 raportări, până la verificarea unui moderator

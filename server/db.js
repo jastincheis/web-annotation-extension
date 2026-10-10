@@ -80,6 +80,22 @@ addColumn("reports", "ip_hash", "TEXT");
 db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_ip ON votes(annotation_id, ip_hash);`);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_reports_ip ON reports(annotation_id, ip_hash);`);
 
+// Voturile date de autori propriilor adnotări (permise până la 0.2.6) nu mai contează:
+// le scoatem și scădem scorul corespunzător. Idempotent — la a doua pornire nu mai găsește nimic.
+function purgeSelfVotes() {
+  const self = db
+    .prepare(
+      `SELECT v.annotation_id, v.voter_id, v.direction FROM votes v
+         JOIN annotations a ON a.id = v.annotation_id WHERE v.voter_id = a.author_id`
+    )
+    .all();
+  for (const v of self) {
+    db.prepare("UPDATE annotations SET votes = votes - ? WHERE id = ?").run(v.direction === "up" ? 1 : -1, v.annotation_id);
+    db.prepare("DELETE FROM votes WHERE annotation_id = ? AND voter_id = ?").run(v.annotation_id, v.voter_id);
+  }
+}
+purgeSelfVotes();
+
 // Auto-hide annotations after this many unique reports (per doc: 5-10).
 const REPORT_HIDE_THRESHOLD = 5;
 

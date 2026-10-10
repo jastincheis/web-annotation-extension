@@ -64,7 +64,10 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ voterId, direction }),
     });
-    if (!res.ok) throw new Error(`Vot eșuat (${res.status})`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Vot eșuat (${res.status})`);
+    }
     return res.json();
   }
 

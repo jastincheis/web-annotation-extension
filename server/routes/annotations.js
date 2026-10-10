@@ -256,9 +256,13 @@ router.delete("/:id", writeLimiter, (req, res) => {
 });
 
 // POST /api/annotations/:id/vote  { voterId, direction: "up" | "down" }
-// Un singur vot pe adnotare per votant ȘI per adresă IP (amprentată): cu ID-uri inventate de
-// pe același calculator nu se mai poate umfla sau dărâma o adnotare. Votul repetat în aceeași
+// Un vot pe adnotare per votant; autorul nu-și poate vota propriile adnotări. Pe aceeași
+// adresă IP (amprentată) se acceptă cel mult MAX_VOTES_PER_IP votanți diferiți — destul
+// pentru o familie / colegi / CGNAT (Digi pune mulți clienți pe aceeași IP), dar nu cât să
+// umfli o adnotare cu ID-uri inventate de pe același calculator. Votul repetat în aceeași
 // direcție nu schimbă nimic; în direcția opusă își schimbă sensul.
+const MAX_VOTES_PER_IP = 5;
+
 router.post("/:id/vote", writeLimiter, (req, res) => {
   const { id } = req.params;
   const { voterId, direction } = req.body || {};
@@ -268,14 +272,21 @@ router.post("/:id/vote", writeLimiter, (req, res) => {
 
   const annotation = db.prepare(`SELECT * FROM annotations WHERE id = ? AND removed_at IS NULL`).get(id);
   if (!annotation) return res.status(404).json({ error: "Not found" });
+  if (annotation.author_id === voterId) {
+    return res.status(403).json({ error: "Nu-ți poți vota propriile adnotări." });
+  }
 
   const ip = ipHash(req.ip);
-  const existing = db
-    .prepare("SELECT * FROM votes WHERE annotation_id = ? AND (voter_id = ? OR ip_hash = ?) LIMIT 1")
-    .get(id, voterId, ip);
+  const existing = db.prepare("SELECT * FROM votes WHERE annotation_id = ? AND voter_id = ?").get(id, voterId);
   const delta = direction === "up" ? 1 : -1;
 
   if (!existing) {
+    const { n } = db
+      .prepare("SELECT COUNT(*) AS n FROM votes WHERE annotation_id = ? AND ip_hash = ?")
+      .get(id, ip);
+    if (n >= MAX_VOTES_PER_IP) {
+      return res.status(429).json({ error: "Prea multe voturi de pe aceeași conexiune pentru adnotarea asta." });
+    }
     db.prepare("INSERT INTO votes (annotation_id, voter_id, direction, ip_hash) VALUES (?, ?, ?, ?)").run(
       id,
       voterId,
@@ -284,11 +295,7 @@ router.post("/:id/vote", writeLimiter, (req, res) => {
     );
     db.prepare("UPDATE annotations SET votes = votes + ? WHERE id = ?").run(delta, id);
   } else if (existing.direction !== direction) {
-    db.prepare("UPDATE votes SET direction = ? WHERE annotation_id = ? AND voter_id = ?").run(
-      direction,
-      id,
-      existing.voter_id
-    );
+    db.prepare("UPDATE votes SET direction = ? WHERE annotation_id = ? AND voter_id = ?").run(direction, id, voterId);
     db.prepare("UPDATE annotations SET votes = votes + ? WHERE id = ?").run(delta * 2, id);
   }
 

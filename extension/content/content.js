@@ -904,32 +904,47 @@
 
   function attachVoteControl(ann, x, y) {
     const canDelete = isMine(ann);
-    const control = el(
-      "div",
-      { class: "wa-vote", style: `left:${x}px; top:${y}px;` },
-      el("button", { class: "wa-up", title: "Like" }, "👍"),
-      el("span", { class: "wa-count" }, String(ann.votes)),
-      el("button", { class: "wa-down", title: "Dislike" }, "👎"),
-      el("button", { class: "wa-report", title: "Raportează" }, "🚩")
-    );
+    // Pe adnotările proprii: doar scorul (fără 👍/👎/🚩) — votezi și raportezi ce scriu alții.
+    const control = canDelete
+      ? el(
+          "div",
+          { class: "wa-vote", style: `left:${x}px; top:${y}px;` },
+          el("span", { class: "wa-count", title: "Voturile primite" }, `${ann.votes} 👍`)
+        )
+      : el(
+          "div",
+          { class: "wa-vote", style: `left:${x}px; top:${y}px;` },
+          el("button", { class: "wa-up", title: "Like" }, "👍"),
+          el("span", { class: "wa-count" }, String(ann.votes)),
+          el("button", { class: "wa-down", title: "Dislike" }, "👎"),
+          el("button", { class: "wa-report", title: "Raportează" }, "🚩")
+        );
 
-    control.querySelector(".wa-up").onclick = async (e) => {
-      e.stopPropagation();
-      const updated = await WA_Api.vote(ann.id, state.userId, "up");
-      updateVotes(ann.id, updated.votes);
+    const sendVote = async (direction) => {
+      try {
+        const updated = await WA_Api.vote(ann.id, state.userId, direction);
+        updateVotes(ann.id, updated.votes);
+      } catch (err) {
+        showSaveError(err.message || "Votul nu a putut fi trimis.");
+      }
     };
-    control.querySelector(".wa-down").onclick = async (e) => {
-      e.stopPropagation();
-      const updated = await WA_Api.vote(ann.id, state.userId, "down");
-      updateVotes(ann.id, updated.votes);
-    };
-    control.querySelector(".wa-report").onclick = (e) => {
-      e.stopPropagation();
-      pauseVideoIfPlaying();
-      openReportForm(ann, e.clientX, e.clientY, () => {
-        control.querySelector(".wa-report").textContent = "🚩✓";
-      });
-    };
+    if (!canDelete) {
+      control.querySelector(".wa-up").onclick = (e) => {
+        e.stopPropagation();
+        sendVote("up");
+      };
+      control.querySelector(".wa-down").onclick = (e) => {
+        e.stopPropagation();
+        sendVote("down");
+      };
+      control.querySelector(".wa-report").onclick = (e) => {
+        e.stopPropagation();
+        pauseVideoIfPlaying();
+        openReportForm(ann, e.clientX, e.clientY, () => {
+          control.querySelector(".wa-report").textContent = "🚩✓";
+        });
+      };
+    }
 
     if (canDelete && ann.type !== "link") {
       const linkBtn = el("button", { class: "wa-attach-link", title: "Adaugă / schimbă link" }, "🔗");
@@ -3564,7 +3579,7 @@
           "primești un ID generat pe dispozitivul tău (pseudonim, fără nume sau email). Serverul vede adresa IP a cererilor."
         ),
         item("Linkuri:", "linkurile pe care le adaugi sunt verificate la URLhaus (abuse.ch) ca să nu fie periculoase."),
-        item("Voturi și raportări:", "se păstrează împreună cu o amprentă a adresei IP (nu IP-ul), ca fiecare conexiune să voteze și să raporteze o singură dată."),
+        item("Voturi și raportări:", "se păstrează împreună cu o amprentă a adresei IP (nu IP-ul), ca o conexiune să nu poată umfla voturile sau raportările cu identități inventate."),
         item("Excepții:", "pe paginile locale sau interne (localhost, adrese IP) extensia nu pornește deloc.")
       ),
       el(
