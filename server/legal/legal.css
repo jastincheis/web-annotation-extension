@@ -1,0 +1,83 @@
+/* Stilul paginilor legale servite de server (/privacy). Fără fonturi sau resurse externe. */
+html { margin: 0; }
+body { margin: 0; }
+:root {
+    --bg: #f6f7fb;
+    --surface: #ffffff;
+    --surface-sunken: #eef0f8;
+    --text: #1c1b29;
+    --text-secondary: #5b5770;
+    --border: #e2e1ec;
+    --accent: #7c3aed;
+    --accent-soft: #3b8fbf;
+    --mono-tint: #f1eefa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #131120; --surface: #1c1a2c; --surface-sunken: #221f36; --text: #eae6ff;
+      --text-secondary: #a89fc9; --border: #332d4d; --accent: #a78bfa; --accent-soft: #7cc3ea;
+      --mono-tint: #211e35; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #131120; --surface: #1c1a2c; --surface-sunken: #221f36; --text: #eae6ff;
+    --text-secondary: #a89fc9; --border: #332d4d; --accent: #a78bfa; --accent-soft: #7cc3ea;
+    --mono-tint: #211e35; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.65;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2 { font-family: Georgia, "Times New Roman", serif; color: var(--text); text-wrap: balance; font-weight: 600; }
+  a { color: var(--accent); }
+  .wrap { max-width: 720px; margin: 0 auto; padding-inline: 20px; padding-block: 56px 96px; }
+
+  .masthead { display: flex; align-items: center; gap: 18px; margin-bottom: 8px; }
+  .mark { width: 52px; height: 52px; flex: 0 0 auto; }
+  .masthead-text h1 { font-size: 26px; margin: 0 0 2px; letter-spacing: -0.01em; }
+  .kicker { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+  .updated {
+    margin: 18px 0 36px; font-size: 13px; color: var(--text-secondary);
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; border-top: 1px solid var(--border); padding-top: 14px;
+  }
+
+  .tldr { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px; margin-bottom: 44px; }
+  .tldr-title { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+  .tldr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; }
+  .tldr-item { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+  .tldr-item svg { flex: 0 0 auto; margin-top: 4px; color: var(--accent-soft); }
+  .tldr-item p { margin: 0; font-size: 14.5px; }
+  @media (max-width: 600px) { .tldr-grid { grid-template-columns: 1fr; } }
+
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-bottom: 48px; }
+  nav.toc a {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12.5px; color: var(--text-secondary); text-decoration: none;
+    background: var(--surface-sunken); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px;
+  }
+  nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); border-color: var(--accent); }
+
+  section { margin-bottom: 44px; scroll-margin-top: 24px; }
+  section h2 { font-size: 20px; display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px; }
+  section h2 .num { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 13px; font-weight: 500; color: var(--accent-soft); }
+  section p { margin: 0 0 14px; max-width: 65ch; }
+  section p.muted { color: var(--text-secondary); font-size: 14.5px; }
+  section ul { margin: 0 0 14px; padding-left: 22px; }
+  section li { margin-bottom: 8px; max-width: 62ch; }
+  code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 0.88em; background: var(--mono-tint); color: var(--accent); padding: 0.1em 0.4em; border-radius: 4px; }
+
+  .table-wrap { overflow-x: auto; margin: 4px 0 18px; }
+  .fact-table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 520px; }
+  .fact-table th, .fact-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .fact-table th { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); font-weight: 500; }
+  .fact-table td:first-child { font-weight: 600; }
+
+  .callout { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px; padding: 14px 16px; margin: 0 0 14px; }
+  .callout p { margin: 0; }
+
+  footer { border-top: 1px solid var(--border); padding-top: 24px; margin-top: 56px; font-size: 14px; color: var(--text-secondary); }

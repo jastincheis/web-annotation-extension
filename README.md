@@ -36,6 +36,8 @@ Endpoint-uri disponibile:
   (`?url=` mai merge doar pentru extensiile vechi, ≤ 0.2.3). Fără `minVotes` le trimite pe
   toate; extensia face Top 10 pe pagină cu cel mult o adnotare per utilizator (cea mai bună a
   lui: scor, apoi vechime) și arată pe pagină doar adnotările din top
+- `GET /privacy` — politica de confidențialitate (pagină statică din `server/legal`, fără resurse externe);
+  e adresa oficială folosită de extensie și în Chrome Web Store
 - `GET /api/annotations/by-author/:authorHash` — profilul public al unui utilizator: adnotările
   lui vizibile de pe toate paginile, după voturi (apoi vechime), max. 500
 - `POST /api/annotations/mine` — `{authorId}`: toate adnotările autorului, de pe toate

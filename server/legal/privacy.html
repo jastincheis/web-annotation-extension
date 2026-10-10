@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Adormis — Politică de confidențialitate</title>
+<link rel="stylesheet" href="/legal/legal.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="masthead">
+    <svg class="mark" viewBox="0 0 128 128" aria-hidden="true">
+      <polygon points="64.00,2.00 79.28,42.97 122.97,44.84 88.73,72.03 100.44,114.16 64.00,90.00 27.56,114.16 39.27,72.03 5.03,44.84 48.72,42.97" fill="var(--accent-soft)"/>
+      <circle cx="64" cy="64" r="26" fill="var(--surface)"/>
+      <rect x="47" y="47" width="34" height="34" rx="4" fill="var(--accent)"/>
+    </svg>
+    <div class="masthead-text">
+      <div class="kicker">Adormis</div>
+      <h1>Politică de confidențialitate</h1>
+    </div>
+  </div>
+  <p class="updated">Actualizată: 10 octombrie 2026 · se aplică versiunii 0.2.9 și celor următoare</p>
+
+  <div class="tldr">
+    <div class="tldr-title">Pe scurt</div>
+    <div class="tldr-grid">
+      <div class="tldr-item">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <p>Extensia nu trimite <strong>nimic</strong> la server până nu îți dai acordul. Acordul se retrage oricând din meniul extensiei.</p>
+      </div>
+      <div class="tldr-item">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M5 8h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <p>Pentru paginile pe care le deschizi trimitem doar o <strong>amprentă</strong> (hash) a adresei, nu adresa.</p>
+      </div>
+      <div class="tldr-item">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.4"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12" stroke="currentColor" stroke-width="1.2"/></svg>
+        <p>Ce desenezi sau scrii e <strong>public</strong>: îl vede oricine are extensia, pe aceeași pagină și în <strong>profilul tău public</strong>, sub pseudonim.</p>
+      </div>
+      <div class="tldr-item">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <p>Nu vindem date, nu afișăm reclame, nu facem profilare și nu folosim cookie-uri.</p>
+      </div>
+    </div>
+  </div>
+
+  <nav class="toc" aria-label="Cuprins">
+    <a href="#operator">Cine suntem</a>
+    <a href="#date">Ce date</a>
+    <a href="#scop">Scop și temei</a>
+    <a href="#destinatari">Cine le primește</a>
+    <a href="#pastrare">Cât le păstrăm</a>
+    <a href="#nu-facem">Ce nu facem</a>
+    <a href="#drepturi">Drepturile tale</a>
+    <a href="#limited-use">Chrome Web Store</a>
+    <a href="#varsta">Vârstă</a>
+    <a href="#contact">Contact</a>
+  </nav>
+
+  <section id="operator">
+    <h2><span class="num">01</span> Cine răspunde de date</h2>
+    <p>Adormis este o extensie de Chrome care îți permite să desenezi, să scrii și să lași linkuri peste orice pagină web sau video, vizibile pentru ceilalți utilizatori ai extensiei. Operatorul datelor este <strong>Cucu-Bau</strong>, dezvoltatorul extensiei Adormis, care poate fi contactat la <a href="mailto:iosunt@yahoo.com">iosunt@yahoo.com</a>.</p>
+  </section>
+
+  <section id="date">
+    <h2><span class="num">02</span> Ce date prelucrăm</h2>
+    <div class="callout"><p>Până nu apeși „Sunt de acord” în ecranul afișat la prima folosire, extensia nu trimite nicio cerere la serverul nostru. Pe paginile locale sau interne (localhost, adrese IP, rețele interne) extensia nu pornește deloc.</p></div>
+    <div class="table-wrap">
+      <table class="fact-table">
+        <thead><tr><th>Ce</th><th>Detalii</th></tr></thead>
+        <tbody>
+          <tr><td>Identificatorul tău</td><td>Un cod aleator generat pe dispozitivul tău la prima folosire și păstrat în browser. Nu e legat de nume, email sau cont Google, dar e un <em>pseudonim</em>, nu o identitate anonimă. Cu el îți poți edita și șterge propriile adnotări; serverul îl păstrează și nu îl publică niciodată. Public apare doar o amprentă a lui (hash SHA-256), din care codul nu poate fi aflat.</td></tr>
+          <tr><td>Paginile pe care le deschizi</td><td>Doar amprenta (hash SHA-256) adresei, ca să-ți arătăm adnotările de pe pagina respectivă. Adresa în sine nu este trimisă.</td></tr>
+          <tr><td>Paginile pe care adnotezi</td><td>Adresa completă a paginii, ca alți utilizatori s-o găsească. Din adresă scoatem parametrii de urmărire (ex. <code>utm_</code>, <code>fbclid</code>) și pe cei sensibili (ex. <code>token</code>, <code>code</code>, <code>session</code>, <code>email</code>). Pe YouTube păstrăm doar ID-ul video-ului, pe Netflix doar ID-ul titlului.</td></tr>
+          <tr><td>Adnotările tale</td><td>Ce creezi: desen, spray, formă, text, bulă, link, plus culoarea, poziția, intervalul dintr-un video și linkul atașat, dacă există. Sunt publice.</td></tr>
+          <tr><td>Profilul public</td><td>Oricine are extensia poate deschide, printr-un click pe autorul unei adnotări, profilul acelui autor: toate adnotările lui vizibile, de pe toate paginile, împreună cu adresa fiecărei pagini și numărul de voturi. Profilul e identificat doar prin amprenta pseudonimului tău, nu prin nume. Conține numai paginile pe care <strong>ai pus tu adnotări</strong>, nu paginile pe care le-ai vizitat. Dacă ștergi o adnotare, dispare și din profil.</td></tr>
+          <tr><td>Voturi și raportări</td><td>Ce adnotare ai votat sau raportat, legat de identificatorul tău și de o amprentă a adresei IP (cod HMAC calculat cu o cheie secretă a serverului, din care IP-ul nu poate fi citit), ca să nu se poată umfla voturile sau raportările cu identități inventate de pe aceeași conexiune. La raportare păstrăm și motivul ales, detaliile scrise de tine și momentul raportării.</td></tr>
+          <tr><td>Moderare</td><td>Dacă o adnotare e scoasă pentru că încalcă legea sau <a href="https://claude.ai/artifact/Y1zMCdLSAioXzbo2t3Jztd">termenii de utilizare</a>, păstrăm adnotarea, momentul și motivul scoaterii, ca evidență.</td></tr>
+          <tr><td>Date tehnice</td><td>Adresa IP și datele obișnuite ale unei cereri web (ora, navigatorul). Serverul le folosește pentru a limita abuzurile (număr de cereri pe minut) și nu salvează IP-ul în baza de date, ci doar amprenta descrisă mai sus, la voturi și raportări. Furnizorul de găzduire le poate păstra în jurnalele lui tehnice.</td></tr>
+          <tr><td>Linkurile adăugate</td><td>Când adaugi un link, adresa lui este verificată la serviciul URLhaus (abuse.ch), ca să nu publicăm linkuri spre malware.</td></tr>
+          <tr><td>Setări locale</td><td>Poziția barei, culoarea aleasă, starea acordului. Rămân doar în browserul tău.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">Nu cerem nume, email, telefon sau parolă și nu citim conținutul paginilor pe care le vizitezi.</p>
+  </section>
+
+  <section id="scop">
+    <h2><span class="num">03</span> De ce și pe ce temei</h2>
+    <ul>
+      <li><strong>Afișarea și publicarea adnotărilor</strong>, inclusiv în clasamente și în profilul public al autorului, singurul scop al extensiei: pe baza consimțământului tău (art. 6 alin. 1 lit. a GDPR), dat în ecranul de acord.</li>
+      <li><strong>Securitatea serviciului</strong> (limitarea cererilor abuzive, limitarea voturilor și raportărilor de pe aceeași conexiune, verificarea linkurilor spre malware): pe baza interesului legitim de a proteja utilizatorii și serverul (art. 6 alin. 1 lit. f GDPR).</li>
+      <li><strong>Tratarea raportărilor și moderarea conținutului</strong>: pentru îndeplinirea obligațiilor legale ale unui serviciu care găzduiește conținut (Regulamentul UE 2022/2065, art. 6 alin. 1 lit. c GDPR).</li>
+    </ul>
+  </section>
+
+  <section id="destinatari">
+    <h2><span class="num">04</span> Cine primește datele</h2>
+    <ul>
+      <li><strong>Ceilalți utilizatori ai extensiei</strong> văd adnotările publice, numărul de voturi și amprenta identificatorului autorului, precum și profilul public al autorului (adnotările lui de pe toate paginile, cu adresa paginilor).</li>
+      <li><strong>Railway</strong> (railway.com), furnizorul care găzduiește serverul și baza de date. Serverul și datele stau într-un centru de date din Uniunea Europeană (regiunea EU West, Amsterdam, Olanda). Railway este o companie din SUA; dacă personalul sau subcontractanții lui accesează datele din afara Spațiului Economic European, transferul se face pe baza clauzelor contractuale standard ale furnizorului.</li>
+      <li><strong>abuse.ch / URLhaus</strong> (Elveția) primește doar adresa linkurilor pe care le adaugi, pentru verificarea de securitate.</li>
+    </ul>
+    <p>Nu vindem și nu închiriem date nimănui.</p>
+  </section>
+
+  <section id="pastrare">
+    <h2><span class="num">05</span> Cât timp le păstrăm</h2>
+    <ul>
+      <li><strong>Adnotările</strong> rămân până le ștergi tu (butonul 🗑, disponibil doar autorului) sau până le scoatem noi, dacă încalcă legea sau regulile. După 5 raportări de la utilizatori diferiți se ascund automat.</li>
+      <li><strong>Voturile și raportările</strong> (inclusiv amprenta IP) rămân cât timp există adnotarea. Raportările unei adnotări repuse după verificare se șterg.</li>
+      <li><strong>Adnotările scoase de moderator</strong> se păstrează ca evidență cel mult 2 ani.</li>
+      <li><strong>Adresele IP</strong> în clar sunt ținute doar în memoria serverului, cel mult un minut, pentru limitarea cererilor.</li>
+      <li><strong>Datele din browserul tău</strong> (identificator, setări, acord) dispar când dezinstalezi extensia.</li>
+    </ul>
+  </section>
+
+  <section id="nu-facem">
+    <h2><span class="num">06</span> Ce nu facem</h2>
+    <ul>
+      <li>Nu trimitem nimic înainte de acordul tău și nimic de pe paginile locale sau interne.</li>
+      <li>Nu construim un istoric al navigării tale și nu facem profilare. Profilul public arată doar ce ai publicat tu, nu ce ai vizitat.</li>
+      <li>Nu folosim cookie-uri, reclame sau servicii de analiză (analytics).</li>
+      <li>Nu citim conținutul paginilor, formularele sau parolele tale.</li>
+    </ul>
+  </section>
+
+  <section id="drepturi">
+    <h2><span class="num">07</span> Drepturile tale</h2>
+    <p>Ai dreptul de acces, rectificare, ștergere, restricționare, portabilitate și opoziție, precum și dreptul de a-ți retrage consimțământul oricând, fără să afecteze ce s-a întâmplat înainte.</p>
+    <ul>
+      <li><strong>Retragerea acordului:</strong> din meniul extensiei, butonul „Retrage acordul”. Extensia se oprește imediat.</li>
+      <li><strong>Ștergerea adnotărilor:</strong> direct din pagină, cu 🗑, sau scriindu-ne.</li>
+      <li><strong>Celelalte cereri:</strong> la <a href="mailto:iosunt@yahoo.com">iosunt@yahoo.com</a>. Pentru că nu știm cine ești, s-ar putea să-ți cerem să ne arăți adnotările în cauză.</li>
+      <li><strong>Plângere:</strong> la Autoritatea Națională de Supraveghere a Prelucrării Datelor cu Caracter Personal (<a href="https://www.dataprotection.ro" rel="noopener noreferrer">dataprotection.ro</a>) sau la autoritatea din țara ta.</li>
+    </ul>
+  </section>
+
+  <section id="limited-use">
+    <h2><span class="num">08</span> Chrome Web Store: utilizare limitată</h2>
+    <p>Utilizarea informațiilor primite prin extensie respectă <a href="https://developer.chrome.com/docs/webstore/program-policies/policies" rel="noopener noreferrer">Politica privind datele utilizatorilor din Chrome Web Store</a>, inclusiv cerințele de utilizare limitată (Limited Use). Datele sunt folosite doar pentru singurul scop al extensiei, afișarea și publicarea adnotărilor, și pentru securitatea acestuia. Nu sunt transferate, vândute sau folosite pentru reclame, profilare sau evaluarea solvabilității.</p>
+  </section>
+
+  <section id="securitate">
+    <h2><span class="num">09</span> Securitate</h2>
+    <p>Toate cererile către server folosesc HTTPS. Identificatorul care îți permite să editezi și să ștergi adnotări nu este publicat; serverul acceptă modificări doar de la autor. Datele trimise la server sunt verificate înainte de salvare.</p>
+  </section>
+
+  <section id="varsta">
+    <h2><span class="num">10</span> Vârstă</h2>
+    <p>Adormis nu este destinată persoanelor sub 16 ani. Nu colectăm cu bună știință date de la acestea; dacă afli că s-a întâmplat, scrie-ne și le ștergem.</p>
+  </section>
+
+  <section id="modificari">
+    <h2><span class="num">11</span> Modificări</h2>
+    <p>Dacă schimbăm ce date se trimit sau cum sunt folosite, actualizăm această pagină și data de mai sus și îți cerem din nou acordul în extensie.</p>
+  </section>
+
+  <footer id="contact">
+    Întrebări despre confidențialitate sau cereri legate de date: <a href="mailto:iosunt@yahoo.com">iosunt@yahoo.com</a>.
+  </footer>
+</div>
+</body>
+</html>

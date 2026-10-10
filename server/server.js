@@ -68,6 +68,21 @@ app.use(
 );
 app.use("/api/check-url", checkUrlRouter);
 
+// Paginile legale (server/legal), publice — adresa oficială a politicii de confidențialitate
+// (o cere și Chrome Web Store). Doar resurse proprii: fără fonturi, scripturi sau alte servicii
+// externe, ca cine citește politica să nu-și trimită IP-ul nimănui altcuiva.
+const LEGAL_HEADERS = {
+  "Content-Security-Policy": "default-src 'none'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  "X-Frame-Options": "DENY",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+};
+app.use("/legal", (_req, res, next) => (res.set(LEGAL_HEADERS), next()), express.static(path.join(__dirname, "legal")));
+app.get("/privacy", (_req, res) => {
+  res.set(LEGAL_HEADERS);
+  res.sendFile(path.join(__dirname, "legal", "privacy.html"));
+});
+
 app.listen(PORT, () => {
   console.log(`Adormis server ascultă pe http://localhost:${PORT}`);
 });

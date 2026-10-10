@@ -3707,7 +3707,7 @@
   const CONSENT_VERSION = 3; // crește dacă se schimbă ce date se trimit — se cere acord din nou
   // (2: amprenta IP la voturi/raportări, motivul raportărilor, termenii de utilizare;
   //  3: profilul public — adnotările unui autor de pe toate paginile, grupate)
-  const PRIVACY_URL = "https://claude.ai/code/artifact/5b5b0d64-a764-4407-b294-96b377a36e41";
+  const PRIVACY_URL = "https://web-annotation-extension-production.up.railway.app/privacy";
   const TERMS_URL = "https://claude.ai/artifact/Y1zMCdLSAioXzbo2t3Jztd";
 
   async function loadConsent() {

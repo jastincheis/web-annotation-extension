@@ -30,4 +30,4 @@ Confidențialitate: la prima folosire extensia îți cere acordul și nu trimite
 
 ## Politică de confidențialitate (link pentru dashboard)
 
-https://claude.ai/code/artifact/5b5b0d64-a764-4407-b294-96b377a36e41
+https://web-annotation-extension-production.up.railway.app/privacy
