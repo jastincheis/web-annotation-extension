@@ -92,6 +92,7 @@ async function load() {
     const items = await api(`/queue?status=${status}`);
     $("#login").hidden = true;
     $("#tabs").hidden = false;
+    $("#name-form").hidden = false;
     if (!items.length) $("#list").append(el("p", {}, status === "removed" ? "Nimic scos încă." : "Nicio adnotare raportată."));
     items.forEach((a) => $("#list").append(card(a)));
   } catch (err) {
@@ -105,6 +106,7 @@ function logout() {
   sessionStorage.removeItem("wa_admin_token");
   $("#login").hidden = false;
   $("#tabs").hidden = true;
+  $("#name-form").hidden = true;
   $("#list").textContent = "";
 }
 
@@ -123,4 +125,15 @@ $("#tabs").addEventListener("click", (e) => {
   load();
 });
 $("#logout").addEventListener("click", logout);
+$("#name-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const hash = $("#name-hash").value.trim().toLowerCase();
+  try {
+    const r = await api(`/users/${encodeURIComponent(hash)}/set-name`, { name: $("#name-value").value });
+    $("#msg").textContent = `Numele „${r.name}” a fost dat utilizatorului ${hash.slice(0, 4).toUpperCase()}.`;
+    load();
+  } catch (err) {
+    $("#msg").textContent = err.message;
+  }
+});
 if (token) load();

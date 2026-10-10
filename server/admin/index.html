@@ -21,6 +21,12 @@
       <button id="logout" type="button">Ieși</button>
     </nav>
   </header>
+  <form id="name-form" hidden>
+    <strong>Dă un nume</strong> (și unul rezervat, ex. „Adormis”) —
+    <input id="name-hash" placeholder="ID public (32 de caractere, din „Ale mele”)" maxlength="32" required>
+    <input id="name-value" placeholder="Numele" maxlength="24" required>
+    <button type="submit">Salvează numele</button>
+  </form>
   <p id="msg" role="status"></p>
   <main id="list"></main>
   <script src="admin.js"></script>

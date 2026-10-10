@@ -77,6 +77,19 @@ router.post("/annotations/:id/restore", (req, res) => {
   res.json(adminView(db.prepare("SELECT * FROM annotations WHERE id = ?").get(row.id)));
 });
 
+// POST /api/admin/users/:hash/set-name  { name } — moderatorul dă un nume, inclusiv unul
+// rezervat (ex. „Adormis” pentru contul proprietarului). Tot unic, tot cu regulile de format.
+router.post("/users/:hash/set-name", (req, res) => {
+  const { validateName, assignName } = require("./users");
+  if (!/^[0-9a-f]{32}$/.test(req.params.hash)) return res.status(400).json({ error: "ID public invalid (32 de caractere hex)" });
+  const v = validateName(req.body?.name, { allowReserved: true });
+  if (v.error) return res.status(400).json({ error: v.error });
+  if (!v.name) return res.status(400).json({ error: "Scrie numele" });
+  const r = assignName(req.params.hash, v);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json({ ok: true, name: r.name });
+});
+
 // POST /api/admin/users/:hash/reset-name — șterge un nume afișat nepotrivit; utilizatorul
 // redevine „Utilizator XXXX” și își poate alege altul.
 router.post("/users/:hash/reset-name", (req, res) => {

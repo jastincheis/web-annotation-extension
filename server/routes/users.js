@@ -19,17 +19,22 @@ const nameLimiter = rateLimit({
 
 const authorHash = (authorId) => crypto.createHash("sha256").update(String(authorId)).digest("hex").slice(0, 32);
 
-// Nume care ar putea fi luate drept ale serviciului sau ale pseudonimelor automate.
-const RESERVED = /^(admin|administrator|moderator|moderare|mod|adormis|utilizator|staff|support|suport|system|sistem|tu)/;
+// Nume care ar putea fi luate drept ale serviciului sau ale pseudonimelor automate. Cele care
+// pot înșela sunt blocate și ca ÎNCEPUT de nume („Adormis Oficial”, „Admin2”); cuvintele scurte
+// doar ca nume ÎNTREG — altfel „tu” ar bloca „Tudor”, iar „mod” pe „Modest”. Un nume rezervat
+// îl poate da doar moderatorul (POST /api/admin/users/:hash/set-name).
+const RESERVED_PREFIX = /^(admin|moderator|moderare|adormis|utilizator)/;
+const RESERVED_EXACT = new Set(["mod", "staff", "support", "suport", "system", "sistem", "tu", "echipa", "team"]);
+const isReserved = (key) => RESERVED_PREFIX.test(key) || RESERVED_EXACT.has(key);
 
-function validateName(raw) {
+function validateName(raw, { allowReserved = false } = {}) {
   const name = String(raw ?? "").normalize("NFC").replace(/\s+/g, " ").trim();
   if (!name) return { name: "" }; // gol = renunți la nume
   if (name.length < 2 || name.length > 24) return { error: "Numele are între 2 și 24 de caractere." };
   if (!/^[\p{L}\p{N} ._-]+$/u.test(name)) return { error: "Doar litere, cifre, spații și . _ -" };
   const key = nameKey(name);
   if (key.length < 2) return { error: "Numele trebuie să conțină măcar două litere sau cifre." };
-  if (RESERVED.test(key)) return { error: "Numele acesta e rezervat — alege altul." };
+  if (!allowReserved && isReserved(key)) return { error: "Numele acesta e rezervat — alege altul." };
   return { name, key };
 }
 
@@ -55,15 +60,22 @@ router.post("/name", nameLimiter, (req, res) => {
     db.prepare("DELETE FROM users WHERE author_hash = ?").run(hash);
     return res.json({ hash, name: null });
   }
+  const r = assignName(hash, v);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json({ hash, name: r.name });
+});
+
+// Salvează numele unui utilizator, dacă nu e purtat de altcineva. Folosit și de moderator.
+function assignName(hash, v) {
   const taken = db.prepare("SELECT author_hash FROM users WHERE name_key = ?").get(v.key);
-  if (taken && taken.author_hash !== hash) {
-    return res.status(409).json({ error: `Numele „${v.name}” e deja folosit — alege altul.` });
-  }
+  if (taken && taken.author_hash !== hash) return { status: 409, error: `Numele „${v.name}” e deja folosit — alege altul.` };
   db.prepare(
     `INSERT INTO users (author_hash, name, name_key, updated_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(author_hash) DO UPDATE SET name = excluded.name, name_key = excluded.name_key, updated_at = excluded.updated_at`
   ).run(hash, v.name, v.key, Date.now());
-  res.json({ hash, name: v.name });
-});
+  return { name: v.name };
+}
 
 module.exports = router;
+module.exports.validateName = validateName;
+module.exports.assignName = assignName;

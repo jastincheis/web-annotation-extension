@@ -39,7 +39,9 @@ Endpoint-uri disponibile:
 - `GET /api/users/:authorHash` — numele afișat al unui utilizator (`null` dacă nu are)
 - `POST /api/users/name` — `{authorId, name}`: își alege / schimbă numele (gol = îl șterge); unic
   după o cheie fără majuscule, diacritice, spații și `. _ -` (409 dacă e luat), 2–24 caractere,
-  nume rezervate refuzate; max. 10 schimbări/minut. Răspunsurile cu adnotări au `authorName`
+  nume rezervate refuzate (admin…, moderator…, adormis…, utilizator… ca început; tu, mod, staff etc. doar ca nume întreg); max. 10 schimbări/minut. Răspunsurile cu adnotări au `authorName`
+- `POST /api/admin/users/:authorHash/set-name` — `{name}`: moderatorul dă un nume, inclusiv unul
+  rezervat (ex. „Adormis” pentru proprietar); tot unic
 - `POST /api/admin/users/:authorHash/reset-name` — moderatorul șterge un nume nepotrivit
 - `GET /privacy` — politica de confidențialitate (pagină statică din `server/legal`, fără resurse externe);
   e adresa oficială folosită de extensie și în Chrome Web Store

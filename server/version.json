@@ -1,4 +1,4 @@
 {
-  "latest": "0.2.11",
-  "notes": "Îți poți alege un nume (unic) din „Ale mele”, din meniul extensiei sau la acord; apare în Top și în profil."
+  "latest": "0.2.12",
+  "notes": "Nume ca Tudor sau Modest nu mai sunt refuzate din greșeală; în „Ale mele” vezi ID-ul tău public."
 }

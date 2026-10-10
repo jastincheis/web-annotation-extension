@@ -236,6 +236,7 @@
   color: #eae6ff;
   font-size: 12px;
 }
+.wa-mine-id { margin-top: 3px; color: #6f6890; font-size: 10px; user-select: all; word-break: break-all; }
 .wa-mine-name-note { margin-top: 4px; color: #8b839f; font-size: 10.5px; }
 .wa-mine-name-note.wa-error { color: #fca5a5; }
 .wa-mine-count {

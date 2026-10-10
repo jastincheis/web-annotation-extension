@@ -3213,7 +3213,9 @@
     els.mineName.append(
       el("span", { class: "wa-mine-name-label" }, "Apari ca: "),
       el("strong", {}, state.myName || `Utilizator ${short}`),
-      el("button", { class: "wa-mine-name-edit", title: state.myName ? "Schimbă-ți numele" : "Alege-ți un nume", onclick: editMyName }, "✏️")
+      el("button", { class: "wa-mine-name-edit", title: state.myName ? "Schimbă-ți numele" : "Alege-ți un nume", onclick: editMyName }, "✏️"),
+      // amprenta publică (nu secretul) — de dat moderatorului, ex. pentru un nume rezervat
+      el("div", { class: "wa-mine-id", title: "ID-ul tău public (nu e secret)" }, `ID public: ${state.userHash}`)
     );
   }
 
