@@ -26,3 +26,8 @@ main { max-width: 1000px; margin: 0 auto; display: grid; gap: 12px; }
 #name-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; font-size: 14px; }
 #name-form[hidden] { display: none; }
 #name-form input { flex: 1 1 180px; }
+#pass-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; font-size: 14px; }
+#pass-form[hidden], #pass-result[hidden] { display: none; }
+#pass-form input { flex: 1 1 180px; }
+#pass-result { padding: 10px 12px; border: 1px solid currentColor; border-radius: 8px; font-size: 14px; }
+#pass-result code { font-size: 16px; user-select: all; }

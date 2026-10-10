@@ -98,6 +98,26 @@
     return body;
   }
 
+  async function postJson(path, body, fallback) {
+    const b = await base();
+    const res = await fetch(`${b}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `${fallback} (${res.status})`);
+    return data;
+  }
+
+  // Contul tău: numele și dacă are parolă.
+  const getMe = (authorId) => postJson("/api/users/me", { authorId }, "Nu am putut încărca contul");
+  // Creează contul / schimbă parola (cere un nume ales — el e numele de utilizator).
+  const setPassword = (authorId, password) => postJson("/api/users/password", { authorId, password }, "Parola nu a putut fi salvată");
+  // Intră în cont; identitatea curentă a browserului se mută în cont pe server.
+  const login = (name, password, currentAuthorId) =>
+    postJson("/api/users/login", { name, password, currentAuthorId }, "Logarea nu a reușit");
+
   async function vote(id, voterId, direction) {
     const b = await base();
     const res = await fetch(`${b}/api/annotations/${id}/vote`, {
@@ -167,6 +187,9 @@
     listByAuthor,
     getUserName,
     setName,
+    getMe,
+    setPassword,
+    login,
     report,
     remove,
     checkUrl,

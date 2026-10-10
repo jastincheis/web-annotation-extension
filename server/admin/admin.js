@@ -93,6 +93,7 @@ async function load() {
     $("#login").hidden = true;
     $("#tabs").hidden = false;
     $("#name-form").hidden = false;
+    $("#pass-form").hidden = false;
     if (!items.length) $("#list").append(el("p", {}, status === "removed" ? "Nimic scos încă." : "Nicio adnotare raportată."));
     items.forEach((a) => $("#list").append(card(a)));
   } catch (err) {
@@ -107,6 +108,8 @@ function logout() {
   $("#login").hidden = false;
   $("#tabs").hidden = true;
   $("#name-form").hidden = true;
+  $("#pass-form").hidden = true;
+  $("#pass-result").hidden = true;
   $("#list").textContent = "";
 }
 
@@ -125,6 +128,25 @@ $("#tabs").addEventListener("click", (e) => {
   load();
 });
 $("#logout").addEventListener("click", logout);
+$("#pass-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = $("#pass-name").value.trim();
+  if (!confirm(`Resetezi parola contului „${name}”? Parola veche nu mai merge.`)) return;
+  const box = $("#pass-result");
+  box.textContent = "";
+  try {
+    const r = await api("/users/reset-password", { name });
+    box.append(
+      el("p", {}, `Parolă temporară pentru „${r.name}” (apare o singură dată — trimite-o doar titularului): `, el("code", {}, r.tempPassword)),
+      el("p", {}, `Contul are ${r.total} adnotări. Ultimele:`),
+      el("ul", {}, ...r.recent.map((a) => el("li", {}, `${a.text ? "„" + a.text + "” — " : ""}${a.url} (${new Date(a.at).toLocaleDateString("ro-RO")})`)))
+    );
+    box.hidden = false;
+    $("#msg").textContent = "Parola a fost resetată. Spune-i utilizatorului s-o schimbe după ce intră.";
+  } catch (err) {
+    $("#msg").textContent = err.message;
+  }
+});
 $("#name-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const hash = $("#name-hash").value.trim().toLowerCase();

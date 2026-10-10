@@ -20,6 +20,7 @@
     panelAll: null, // adnotările lui de pe toate paginile, aduse de pe server la cerere
     names: new Map(), // amprentă autor -> numele lui afișat (null = fără nume ales), din răspunsurile serverului
     myName: null, // numele tău afișat, dacă ți-ai ales unul — vezi refreshMyName
+    hasPassword: false, // ai cont cu parolă (te poți loga și de pe alt calculator)
     topMode: "page", // panoul Top: "page" (clasamentul paginii) sau "global" (de pe toate paginile)
     mineScope: "page", // panoul de profil: "page" (pagina asta) sau "all" (toate paginile)
     mineQuery: "", // căutarea din panoul de profil
@@ -3046,7 +3047,9 @@
 
   async function refreshMyName() {
     try {
-      state.myName = (await WA_Api.getUserName(state.userHash)).name || null;
+      const me = await WA_Api.getMe(state.userId);
+      state.myName = me.name || null;
+      state.hasPassword = !!me.hasPassword;
     } catch {}
     if (state.myPanelOpen) renderMineHeader();
   }
@@ -3214,9 +3217,114 @@
       el("span", { class: "wa-mine-name-label" }, "Apari ca: "),
       el("strong", {}, state.myName || `Utilizator ${short}`),
       el("button", { class: "wa-mine-name-edit", title: state.myName ? "Schimbă-ți numele" : "Alege-ți un nume", onclick: editMyName }, "✏️"),
+      accountLine(),
       // amprenta publică (nu secretul) — de dat moderatorului, ex. pentru un nume rezervat
       el("div", { class: "wa-mine-id", title: "ID-ul tău public (nu e secret)" }, `ID public: ${state.userHash}`)
     );
+  }
+
+  // Cont opțional: nume de utilizator (= numele afișat) + parolă → același utilizator pe orice
+  // calculator. Fără email: parola uitată nu se poate recupera.
+  function accountLine() {
+    const link = (label, onclick) => el("button", { class: "wa-mine-link", onclick }, label);
+    if (state.hasPassword) {
+      return el(
+        "div",
+        { class: "wa-mine-account" },
+        "🔑 Cont cu parolă · ",
+        link("Schimbă parola", () => openAccountForm("password")),
+        " · ",
+        link("Ieși din cont", logoutAccount)
+      );
+    }
+    return el(
+      "div",
+      { class: "wa-mine-account" },
+      "🔑 ",
+      link("Setează o parolă", () => openAccountForm("password")),
+      " ca să intri și de pe alt calculator · ",
+      link("Am deja cont", () => openAccountForm("login"))
+    );
+  }
+
+  function openAccountForm(kind) {
+    els.mineName.innerHTML = "";
+    const note = el("div", { class: "wa-mine-name-note" });
+    const pass = el("input", { type: "password", placeholder: "Parola (minim 8 caractere)", autocomplete: kind === "login" ? "current-password" : "new-password" });
+    const fields = [pass];
+    let user = null;
+    let pass2 = null;
+    if (kind === "login") {
+      user = el("input", { type: "text", placeholder: "Numele de utilizator", autocomplete: "username" });
+      fields.unshift(user);
+      note.textContent = "Adnotările puse de pe acest calculator până acum se mută în cont.";
+    } else {
+      if (!state.myName) {
+        note.textContent = "Alege-ți întâi un nume (✏️) — el e numele de utilizator.";
+        note.classList.add("wa-error");
+        els.mineName.append(note, el("button", { class: "wa-mine-link", onclick: renderMineHeader }, "Înapoi"));
+        return;
+      }
+      pass2 = el("input", { type: "password", placeholder: "Parola, încă o dată", autocomplete: "new-password" });
+      fields.push(pass2);
+      note.textContent = `Numele de utilizator: ${state.myName}. Nu există recuperare prin email: dacă uiți parola, poți doar încerca s-o ceri de la administrator, fără garanție.`;
+    }
+    fields.forEach(stopKeysPropagating);
+    // Fără email: recuperarea se cere administratorului și NU e garantată (nu poate verifica sigur
+    // cine scrie) — de aici sublinierea pe „încerca”.
+    const forgot = el("div", { class: "wa-mine-forgot", hidden: "true" },
+      "Poți ",
+      el("u", {}, "încerca"),
+      " să ceri resetarea parolei de la administrator, la ",
+      el("a", { href: "mailto:iosunt@yahoo.com?subject=Adormis%20-%20parola%20uitata" }, "iosunt@yahoo.com"),
+      ". Nu e garantat: administratorul nu are cum să verifice sigur că ești tu și poate refuza. Ca să crească șansele, scrie numele de utilizator și descrie câteva adnotări de-ale tale (pagina și textul)."
+    );
+    const forgotLink = el("button", { class: "wa-mine-link", onclick: () => (forgot.hidden = !forgot.hidden) }, "Ai uitat parola?");
+    const fail = (msg) => {
+      note.textContent = `⚠️ ${msg}`;
+      note.classList.add("wa-error");
+    };
+    const submit = async () => {
+      try {
+        if (kind === "login") {
+          const acc = await WA_Api.login(user.value, pass.value, state.userId);
+          await WA_Storage.setIdentity(acc.authorId);
+          location.reload(); // pagina repornește ca utilizatorul contului
+          return;
+        }
+        if (pass.value !== pass2.value) return fail("Parolele nu sunt la fel.");
+        await WA_Api.setPassword(state.userId, pass.value);
+        state.hasPassword = true;
+        renderMineHeader();
+        showSaveError(`Cont creat: intră de pe alt calculator cu „${state.myName}” și parola.`, { ok: true });
+      } catch (err) {
+        fail(err.message);
+      }
+    };
+    els.mineName.append(
+      el(
+        "div",
+        { class: "wa-inline-form wa-mine-account-form" },
+        ...fields,
+        el("div", { class: "wa-mine-name-row" },
+          el("button", { class: "wa-mine-name-save wa-submit", onclick: submit }, kind === "login" ? "Intră" : "Salvează parola"),
+          el("button", { class: "wa-mine-name-cancel wa-cancel", onclick: renderMineHeader }, "Anulează")
+        )
+      ),
+      note,
+      forgotLink,
+      forgot
+    );
+    fields[0].focus();
+  }
+
+  async function logoutAccount() {
+    const ok = window.confirm(
+      "Ieși din cont pe acest calculator? Adnotările rămân în cont; ca să le editezi de aici, intri din nou cu numele și parola."
+    );
+    if (!ok) return;
+    await WA_Storage.setIdentity(null);
+    location.reload();
   }
 
   function editMyName() {

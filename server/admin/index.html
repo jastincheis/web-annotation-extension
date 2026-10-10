@@ -27,6 +27,12 @@
     <input id="name-value" placeholder="Numele" maxlength="24" required>
     <button type="submit">Salvează numele</button>
   </form>
+  <form id="pass-form" hidden>
+    <strong>Resetează parola</strong> (doar dacă ești convins că e titularul contului) —
+    <input id="pass-name" placeholder="Numele de utilizator" maxlength="24" required>
+    <button type="submit">Generează parolă temporară</button>
+  </form>
+  <div id="pass-result" hidden></div>
   <p id="msg" role="status"></p>
   <main id="list"></main>
   <script src="admin.js"></script>

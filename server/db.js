@@ -98,6 +98,11 @@ db.exec(`
   );
 `);
 
+// Cont opțional (nume de utilizator = numele afișat + parolă): parola doar ca hash scrypt;
+// author_id = secretul identității, dat înapoi la logare pe alt calculator (routes/users.js).
+addColumn("users", "password_hash", "TEXT");
+addColumn("users", "author_id", "TEXT");
+
 // „Andrei”, „andrei”, „Andréi” și „An-drei” = același nume: fără diacritice, majuscule,
 // spații și . _ -
 function nameKey(name) {

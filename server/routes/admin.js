@@ -3,7 +3,7 @@
 // ca „Authorization: Bearer …”). Fără ADMIN_TOKEN setat, toată zona răspunde 404.
 const crypto = require("node:crypto");
 const express = require("express");
-const { db, REPORT_HIDE_THRESHOLD, displayNameFor } = require("../db");
+const { db, REPORT_HIDE_THRESHOLD, displayNameFor, nameKey } = require("../db");
 
 const router = express.Router();
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
@@ -90,11 +90,41 @@ router.post("/users/:hash/set-name", (req, res) => {
   res.json({ ok: true, name: r.name });
 });
 
+// POST /api/admin/users/reset-password  { name } — recuperare la cerere (prin email către
+// administrator; fără garanție). Generează o parolă temporară, arătată O SINGURĂ DATĂ, și
+// întoarce câteva adnotări ale contului, ca moderatorul să compare cu ce descrie cel care cere.
+router.post("/users/reset-password", (req, res) => {
+  const { hashPassword } = require("./users");
+  const row = db.prepare("SELECT * FROM users WHERE name_key = ?").get(nameKey(String(req.body?.name || "")));
+  if (!row?.password_hash) return res.status(404).json({ error: "Nu există un cont cu parolă cu acest nume." });
+  const tempPassword = crypto.randomBytes(9).toString("base64url"); // 12 caractere
+  db.prepare("UPDATE users SET password_hash = ?, updated_at = ? WHERE author_hash = ?").run(hashPassword(tempPassword), Date.now(), row.author_hash);
+  const total = db.prepare("SELECT COUNT(*) AS n FROM annotations WHERE author_hash = ? AND removed_at IS NULL").get(row.author_hash).n;
+  const recent = db
+    .prepare("SELECT url, data, created_at FROM annotations WHERE author_hash = ? AND removed_at IS NULL ORDER BY created_at DESC LIMIT 5")
+    .all(row.author_hash)
+    .map((a) => ({ url: a.url, text: JSON.parse(a.data).text || JSON.parse(a.data).label || null, at: a.created_at }));
+  res.json({ name: row.name, tempPassword, total, recent });
+});
+
 // POST /api/admin/users/:hash/reset-name — șterge un nume afișat nepotrivit; utilizatorul
 // redevine „Utilizator XXXX” și își poate alege altul.
+// Un cont cu parolă nu se șterge (și-ar pierde logarea): primește un nume neutru, unic,
+// „Utilizator XXXXXXXX”, pe care și-l poate schimba.
 router.post("/users/:hash/reset-name", (req, res) => {
-  const r = db.prepare("DELETE FROM users WHERE author_hash = ?").run(req.params.hash);
-  if (!r.changes) return res.status(404).json({ error: "Utilizatorul nu are nume ales" });
+  const row = db.prepare("SELECT password_hash FROM users WHERE author_hash = ?").get(req.params.hash);
+  if (!row) return res.status(404).json({ error: "Utilizatorul nu are nume ales" });
+  if (row.password_hash) {
+    const name = `Utilizator ${req.params.hash.slice(0, 8).toUpperCase()}`;
+    db.prepare("UPDATE users SET name = ?, name_key = ?, updated_at = ? WHERE author_hash = ?").run(
+      name,
+      nameKey(name),
+      Date.now(),
+      req.params.hash
+    );
+    return res.json({ ok: true, name });
+  }
+  db.prepare("DELETE FROM users WHERE author_hash = ?").run(req.params.hash);
   res.json({ ok: true });
 });
 

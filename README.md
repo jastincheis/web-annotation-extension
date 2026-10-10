@@ -40,9 +40,16 @@ Endpoint-uri disponibile:
 - `POST /api/users/name` — `{authorId, name}`: își alege / schimbă numele (gol = îl șterge); unic
   după o cheie fără majuscule, diacritice, spații și `. _ -` (409 dacă e luat), 2–24 caractere,
   nume rezervate refuzate (admin…, moderator…, adormis…, utilizator… ca început; tu, mod, staff etc. doar ca nume întreg); max. 10 schimbări/minut. Răspunsurile cu adnotări au `authorName`
+- `POST /api/admin/users/reset-password` — `{name}`: parolă temporară (arătată o singură dată) +
+  numărul și ultimele adnotări ale contului, ca moderatorul să verifice cererea; fără garanție pentru utilizator
 - `POST /api/admin/users/:authorHash/set-name` — `{name}`: moderatorul dă un nume, inclusiv unul
   rezervat (ex. „Adormis” pentru proprietar); tot unic
 - `POST /api/admin/users/:authorHash/reset-name` — moderatorul șterge un nume nepotrivit
+- `POST /api/users/me` — `{authorId}` → `{name, hasPassword}`
+- `POST /api/users/password` — `{authorId, password}` (min. 8): creează contul / schimbă parola;
+  cere un nume ales (= numele de utilizator); parola doar ca hash scrypt
+- `POST /api/users/login` — `{name, password, currentAuthorId?}` → `{authorId, hash, name}`;
+  identitatea curentă a calculatorului se mută în cont (adnotări, voturi, raportări); 10 încercări / 15 min
 - `GET /privacy` — politica de confidențialitate (pagină statică din `server/legal`, fără resurse externe);
   e adresa oficială folosită de extensie și în Chrome Web Store
 - `GET /api/annotations/by-author/:authorHash` — profilul public al unui utilizator: adnotările

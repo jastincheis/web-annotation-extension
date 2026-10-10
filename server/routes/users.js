@@ -57,6 +57,9 @@ router.post("/name", nameLimiter, (req, res) => {
   if (v.error) return res.status(400).json({ error: v.error });
 
   if (!v.name) {
+    if (db.prepare("SELECT password_hash FROM users WHERE author_hash = ?").get(hash)?.password_hash) {
+      return res.status(400).json({ error: "Ai cont cu parolă: numele e numele tău de utilizator — îl poți schimba, nu șterge." });
+    }
     db.prepare("DELETE FROM users WHERE author_hash = ?").run(hash);
     return res.json({ hash, name: null });
   }
@@ -64,6 +67,128 @@ router.post("/name", nameLimiter, (req, res) => {
   if (r.error) return res.status(r.status).json({ error: r.error });
   res.json({ hash, name: r.name });
 });
+
+// ---------- Cont cu parolă (opțional) ----------
+// Numele de utilizator = numele afișat (unic). Parola e păstrată doar ca hash scrypt cu sare;
+// la logare de pe alt calculator, serverul dă înapoi secretul identității (authorId), iar acel
+// calculator devine același utilizator. Fără email = fără recuperare: parola uitată e pierdută.
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Prea multe încercări de logare — mai încearcă peste 15 minute." },
+});
+
+const SCRYPT = { N: 16384, r: 8, p: 1 };
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const key = crypto.scryptSync(password, salt, 32, SCRYPT);
+  return `scrypt$${salt.toString("hex")}$${key.toString("hex")}`;
+}
+function checkPassword(password, stored) {
+  const [kind, saltHex, keyHex] = String(stored || "").split("$");
+  if (kind !== "scrypt" || !saltHex || !keyHex) return false;
+  const key = crypto.scryptSync(password, Buffer.from(saltHex, "hex"), 32, SCRYPT);
+  const want = Buffer.from(keyHex, "hex");
+  return want.length === key.length && crypto.timingSafeEqual(key, want);
+}
+const DUMMY_HASH = hashPassword(crypto.randomBytes(16).toString("hex")); // vezi /login
+const validId = (v) => typeof v === "string" && v.length > 0 && v.length <= 100;
+const validPassword = (v) => typeof v === "string" && v.length >= 8 && v.length <= 200;
+
+// POST /api/users/me  { authorId } — numele tău și dacă ai cont cu parolă.
+router.post("/me", (req, res) => {
+  const { authorId } = req.body || {};
+  if (!validId(authorId)) return res.status(400).json({ error: "Missing authorId" });
+  const row = db.prepare("SELECT name, password_hash FROM users WHERE author_hash = ?").get(authorHash(authorId));
+  res.json({ name: row?.name || null, hasPassword: !!row?.password_hash });
+});
+
+// POST /api/users/password  { authorId, password } — creează contul (sau schimbă parola).
+// Cere un nume ales: el e numele de utilizator cu care intri de pe alt calculator.
+router.post("/password", nameLimiter, (req, res) => {
+  const { authorId, password } = req.body || {};
+  if (!validId(authorId)) return res.status(400).json({ error: "Missing authorId" });
+  if (!validPassword(password)) return res.status(400).json({ error: "Parola are cel puțin 8 caractere." });
+  const hash = authorHash(authorId);
+  const row = db.prepare("SELECT name FROM users WHERE author_hash = ?").get(hash);
+  if (!row) return res.status(400).json({ error: "Alege-ți întâi un nume — el e numele de utilizator." });
+  db.prepare("UPDATE users SET password_hash = ?, author_id = ?, updated_at = ? WHERE author_hash = ?").run(
+    hashPassword(password),
+    authorId,
+    Date.now(),
+    hash
+  );
+  res.json({ ok: true, name: row.name });
+});
+
+// POST /api/users/login  { name, password, currentAuthorId? } — intri în cont de pe alt
+// calculator. Dacă acel calculator avea deja o identitate (currentAuthorId) cu adnotări, voturi
+// sau raportări, ele se mută în cont (mergeIdentity), ca să nu rămână needitabile.
+router.post("/login", loginLimiter, (req, res) => {
+  const { name, password, currentAuthorId } = req.body || {};
+  if (typeof name !== "string" || !validPassword(password)) {
+    return res.status(400).json({ error: "Scrie numele de utilizator și parola." });
+  }
+  const row = db.prepare("SELECT * FROM users WHERE name_key = ?").get(nameKey(name));
+  const fail = () => res.status(401).json({ error: "Nume de utilizator sau parolă greșită." });
+  if (!row?.password_hash || !row.author_id) {
+    checkPassword(password, DUMMY_HASH); // același timp de răspuns, ca să nu se afle ce nume există
+    return fail();
+  }
+  if (!checkPassword(password, row.password_hash)) return fail();
+  if (validId(currentAuthorId) && currentAuthorId !== row.author_id) mergeIdentity(currentAuthorId, row.author_id);
+  res.json({ authorId: row.author_id, hash: row.author_hash, name: row.name });
+});
+
+// Mută tot ce ține de identitatea `fromId` pe `toId`: adnotări, voturi, raportări. Voturile
+// sau raportările duble (amândouă pe aceeași adnotare) și voturile date propriilor adnotări se
+// scot, cu scorurile corectate. Numele vechi (fără parolă) se eliberează.
+function mergeIdentity(fromId, toId) {
+  const fromHash = authorHash(fromId);
+  const toHash = authorHash(toId);
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE annotations SET author_id = ?, author_hash = ? WHERE author_id = ?").run(toId, toHash, fromId);
+
+    const dropVote = db.prepare("DELETE FROM votes WHERE annotation_id = ? AND voter_id = ?");
+    const fixScore = db.prepare("UPDATE annotations SET votes = votes - ? WHERE id = ?");
+    for (const v of db.prepare("SELECT * FROM votes WHERE voter_id = ?").all(fromId)) {
+      const dup = db.prepare("SELECT 1 FROM votes WHERE annotation_id = ? AND voter_id = ?").get(v.annotation_id, toId);
+      if (dup) {
+        dropVote.run(v.annotation_id, fromId);
+        fixScore.run(v.direction === "up" ? 1 : -1, v.annotation_id);
+      } else {
+        db.prepare("UPDATE votes SET voter_id = ? WHERE annotation_id = ? AND voter_id = ?").run(toId, v.annotation_id, fromId);
+      }
+    }
+    // după mutare, contul poate avea voturi pe propriile adnotări — nu contează
+    for (const v of db
+      .prepare("SELECT v.* FROM votes v JOIN annotations a ON a.id = v.annotation_id WHERE v.voter_id = ? AND a.author_id = ?")
+      .all(toId, toId)) {
+      dropVote.run(v.annotation_id, toId);
+      fixScore.run(v.direction === "up" ? 1 : -1, v.annotation_id);
+    }
+
+    for (const r of db.prepare("SELECT * FROM reports WHERE reporter_id = ?").all(fromId)) {
+      const dup = db.prepare("SELECT 1 FROM reports WHERE annotation_id = ? AND reporter_id = ?").get(r.annotation_id, toId);
+      if (dup) {
+        db.prepare("DELETE FROM reports WHERE annotation_id = ? AND reporter_id = ?").run(r.annotation_id, fromId);
+        db.prepare("UPDATE annotations SET reports = MAX(reports - 1, 0) WHERE id = ?").run(r.annotation_id);
+      } else {
+        db.prepare("UPDATE reports SET reporter_id = ? WHERE annotation_id = ? AND reporter_id = ?").run(toId, r.annotation_id, fromId);
+      }
+    }
+
+    db.prepare("DELETE FROM users WHERE author_hash = ? AND password_hash IS NULL").run(fromHash);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
 
 // Salvează numele unui utilizator, dacă nu e purtat de altcineva. Folosit și de moderator.
 function assignName(hash, v) {
@@ -79,3 +204,4 @@ function assignName(hash, v) {
 module.exports = router;
 module.exports.validateName = validateName;
 module.exports.assignName = assignName;
+module.exports.hashPassword = hashPassword;

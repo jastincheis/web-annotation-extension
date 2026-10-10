@@ -78,6 +78,15 @@
     return { id, hash };
   }
 
+  // Schimbă identitatea acestui browser: după logarea în cont (id = cel al contului) sau la
+  // ieșire (id = null → unul nou, gol). Hash-ul public se recalculează.
+  async function setIdentity(id) {
+    const next = id || newUuid();
+    const hash = (await sha256Hex(next)).slice(0, 32);
+    await chrome.storage.local.set({ [KEY_USER_ID]: next, wa_user_hash: hash });
+    return { id: next, hash };
+  }
+
   async function getUserId() {
     return (await getIdentity()).id;
   }
@@ -91,5 +100,5 @@
     await chrome.storage.local.set({ [KEY_SERVER_URL]: url });
   }
 
-  window.WA_Storage = { getIdentity, getUserId, sha256Hex, getServerUrl, setServerUrl, DEFAULT_SERVER_URL };
+  window.WA_Storage = { getIdentity, setIdentity, getUserId, sha256Hex, getServerUrl, setServerUrl, DEFAULT_SERVER_URL };
 })();
