@@ -1,7 +1,7 @@
 const crypto = require("node:crypto");
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash } = require("../db");
+const { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash, displayNameFor } = require("../db");
 
 // Pagina se identifică prin amprenta adresei (?urlHash=, 64 hex) — varianta nouă, care nu
 // trimite adresa. ?url= rămâne doar pentru extensiile încă neactualizate (≤ 0.2.3).
@@ -86,6 +86,7 @@ function serialize(row) {
     type: row.type,
     data: JSON.parse(row.data),
     authorHash: authorHash(row.author_id),
+    authorName: displayNameFor(row.author_hash || authorHash(row.author_id)), // null = fără nume ales
     votes: row.votes,
     reports: row.reports,
     createdAt: row.created_at,

@@ -18,6 +18,8 @@
     revealed: new Set(), // adnotări din afara topului arătate la cerere (salt din profil/"Ale mele")
     panelUser: null, // amprenta utilizatorului al cărui profil e deschis (a ta = "Ale mele")
     panelAll: null, // adnotările lui de pe toate paginile, aduse de pe server la cerere
+    names: new Map(), // amprentă autor -> numele lui afișat (null = fără nume ales), din răspunsurile serverului
+    myName: null, // numele tău afișat, dacă ți-ai ales unul — vezi refreshMyName
     topMode: "page", // panoul Top: "page" (clasamentul paginii) sau "global" (de pe toate paginile)
     mineScope: "page", // panoul de profil: "page" (pagina asta) sau "all" (toate paginile)
     mineQuery: "", // căutarea din panoul de profil
@@ -538,6 +540,7 @@
     els.mineList = el("div", { id: "wa-mine-list" });
     els.mineTitle = el("span", {}, "📍 Adnotările mele");
     els.mineCount = el("div", { class: "wa-mine-count" });
+    els.mineName = el("div", { class: "wa-mine-name" });
     const tab = (scope, label) =>
       el("button", { class: "wa-mine-tab", "data-scope": scope, onclick: () => setMineScope(scope) }, label);
     els.mineTabs = [tab("page", "Pagina asta"), tab("all", "Toate paginile")];
@@ -560,6 +563,7 @@
         els.mineTitle,
         el("button", { class: "wa-mine-close", onclick: () => setMinePanelOpen(false) }, "✕")
       ),
+      els.mineName,
       els.mineCount,
       el("div", { class: "wa-mine-tabs" }, ...els.mineTabs),
       els.mineSearch,
@@ -579,6 +583,7 @@
       showSaveError(err.message);
     }
     if (state.panelUser !== user || !state.myPanelOpen) return; // între timp s-a deschis alt profil / s-a închis
+    rememberNames(list);
     state.panelAll = list.sort(byRank);
     renderMineList();
   }
@@ -2927,6 +2932,7 @@
 
   function renderAnnotation(ann) {
     sanitizeAnnotation(ann);
+    rememberNames([ann]);
     switch (ann.type) {
       case "pen": {
         const path = svgEl("path", {
@@ -3025,9 +3031,31 @@
     return !!ann?.authorHash && ann.authorHash === state.userHash;
   }
 
+  // Numele afișat: cel ales de utilizator (unic, vezi server/routes/users.js) sau, fără el,
+  // „Utilizator AF54” — primele caractere ale amprentei publice.
   function authorLabel(authorHash) {
     const short = String(authorHash || "????").slice(0, 4).toUpperCase();
-    return authorHash === state.userHash ? `Tu (${short})` : `Utilizator ${short}`;
+    if (authorHash === state.userHash) return state.myName ? `${state.myName} (tu)` : `Tu (${short})`;
+    return state.names.get(authorHash) || `Utilizator ${short}`;
+  }
+
+  // Ține minte numele autorilor din orice răspuns al serverului (adnotări, Top, profil).
+  function rememberNames(list) {
+    (list || []).forEach((a) => a?.authorHash && a.authorHash !== state.userHash && state.names.set(a.authorHash, a.authorName || null));
+  }
+
+  async function refreshMyName() {
+    try {
+      state.myName = (await WA_Api.getUserName(state.userHash)).name || null;
+    } catch {}
+    if (state.myPanelOpen) renderMineHeader();
+  }
+
+  async function saveMyName(name) {
+    const saved = await WA_Api.setName(state.userId, name);
+    state.myName = saved.name || null;
+    if (state.myPanelOpen) renderMineHeader();
+    return state.myName;
   }
 
   // Cele 10 cifre din panoul din dreapta: colorate (cu propria culoare) dacă există o
@@ -3079,6 +3107,7 @@
     if (!state.consent) return; // fără acord, nicio cerere spre server
     try {
       state.globalTop = await WA_Api.listTopGlobal(10);
+      rememberNames(state.globalTop);
     } catch (err) {
       console.warn("[Adormis] Nu am putut încărca top-ul global:", err);
     }
@@ -3164,14 +3193,59 @@
     els.minePanel.hidden = !open;
     els.mineBtn?.classList.toggle("active", open && user === state.userHash);
     if (open) {
-      const me = user === state.userHash;
-      els.mineTitle.textContent = me ? "📍 Adnotările mele" : `👤 ${authorLabel(user)}`;
+      renderMineHeader();
       positionMinePanel();
       renderMineList();
       loadPanelAll(); // și pentru numărul total, nu doar pentru tab-ul "Toate paginile"
     }
     // deschis sau închis, adnotările acelui utilizator pot trece de la ascuns la vizibil
     refreshVisibility();
+  }
+
+  // Titlul panoului + rândul cu numele tău (doar în "Ale mele"): ✏️ = îți alegi / schimbi numele.
+  function renderMineHeader() {
+    const me = state.panelUser === state.userHash;
+    els.mineTitle.textContent = me ? "📍 Adnotările mele" : `👤 ${authorLabel(state.panelUser)}`;
+    els.mineName.hidden = !me;
+    if (!me) return;
+    els.mineName.innerHTML = "";
+    const short = String(state.userHash || "????").slice(0, 4).toUpperCase();
+    els.mineName.append(
+      el("span", { class: "wa-mine-name-label" }, "Apari ca: "),
+      el("strong", {}, state.myName || `Utilizator ${short}`),
+      el("button", { class: "wa-mine-name-edit", title: state.myName ? "Schimbă-ți numele" : "Alege-ți un nume", onclick: editMyName }, "✏️")
+    );
+  }
+
+  function editMyName() {
+    els.mineName.innerHTML = "";
+    const input = el("input", { type: "text", maxlength: "24", placeholder: "Numele tău (2–24, unic)", value: state.myName || "" });
+    const note = el("div", { class: "wa-mine-name-note" }, "Public și unic. Nu folosi numele real complet. Gol = fără nume.");
+    stopKeysPropagating(input);
+    const save = async () => {
+      try {
+        await saveMyName(input.value);
+        renderMineHeader();
+      } catch (err) {
+        note.textContent = `⚠️ ${err.message}`;
+        note.classList.add("wa-error");
+        input.focus();
+      }
+    };
+    // Enter / Esc le tratează key-guard.js (apasă .wa-submit / .wa-cancel din .wa-inline-form):
+    // tastele din câmpurile extensiei nu mai ajung la ascultătorii obișnuiți.
+    els.mineName.append(
+      el(
+        "div",
+        { class: "wa-mine-name-row wa-inline-form" },
+        input,
+        el("button", { class: "wa-mine-name-save wa-submit", onclick: save }, "✓"),
+        el("button", { class: "wa-mine-name-cancel wa-cancel", onclick: renderMineHeader }, "✕")
+      ),
+      note
+    );
+    input.focus();
+    input.select();
   }
 
   function openUserProfile(authorHash) {
@@ -3725,6 +3799,8 @@
     const item = (title, text) => el("li", {}, el("strong", {}, title), " ", text);
     const accept = el("button", { class: "wa-consent-accept" }, "Sunt de acord, pornește");
     const later = el("button", { class: "wa-consent-later" }, "Nu acum");
+    const nameInput = el("input", { type: "text", maxlength: "24", placeholder: "ex. Andrei (unic; nu numele real complet)" });
+    stopKeysPropagating(nameInput);
     const policy = el("a", { href: PRIVACY_URL, target: "_blank", rel: "noopener noreferrer" }, "Politica de confidențialitate");
     const terms = el("a", { href: TERMS_URL, target: "_blank", rel: "noopener noreferrer" }, "Termenii de utilizare");
     const box = el(
@@ -3740,14 +3816,21 @@
           "la fiecare pagină deschisă, extensia trimite serverului nostru o amprentă (hash) a adresei, nu adresa. Adresa reală pleacă doar pentru paginile pe care adaugi tu o adnotare."
         ),
         item("Public:", "ce desenezi sau scrii e vizibil pentru oricine are extensia, pe aceeași pagină. Nu posta conținut ilegal, ură, hărțuire sau date personale ale altora."),
-        item("Profil public:", "cine dă click pe autorul unei adnotări vede toate adnotările lui, de pe toate paginile, cu adresa paginilor — sub pseudonim, fără nume. Apar doar paginile pe care ai adnotat, nu cele vizitate."),
+        item("Profil public:", "cine dă click pe autorul unei adnotări vede toate adnotările lui, de pe toate paginile, cu adresa paginilor — sub pseudonim sau sub numele ales de el. Apar doar paginile pe care ai adnotat, nu cele vizitate."),
         item(
           "Identitate:",
           "primești un ID generat pe dispozitivul tău (pseudonim, fără nume sau email). Serverul vede adresa IP a cererilor."
         ),
         item("Linkuri:", "linkurile pe care le adaugi sunt verificate la URLhaus (abuse.ch) ca să nu fie periculoase."),
         item("Voturi și raportări:", "se păstrează împreună cu o amprentă a adresei IP (nu IP-ul), ca o conexiune să nu poată umfla voturile sau raportările cu identități inventate."),
+        item("Nume (opțional):", "poți apărea cu un nume ales de tine, public și unic; altfel apari ca „Utilizator” urmat de 4 caractere."),
         item("Excepții:", "pe paginile locale sau interne (localhost, adrese IP) extensia nu pornește deloc.")
+      ),
+      el(
+        "label",
+        { class: "wa-consent-name" },
+        "Cum vrei să apari? (opțional — îl poți schimba oricând din „Ale mele”)",
+        nameInput
       ),
       el(
         "p",
@@ -3770,9 +3853,13 @@
     accept.onclick = async () => {
       await chrome.storage.local.set({ [CONSENT_KEY]: { v: CONSENT_VERSION, at: Date.now() } });
       state.consent = true;
+      const wanted = nameInput.value.trim();
       close();
       startNetwork();
       toggleToolbar(true);
+      if (wanted) {
+        saveMyName(wanted).catch((err) => showSaveError(`${err.message} Îl poți alege din „Ale mele” (📍).`));
+      }
     };
     consentDialog = backdrop;
     uiHost().appendChild(backdrop);
@@ -3784,6 +3871,7 @@
   async function startNetwork() {
     if (networkStarted || !state.consent) return;
     networkStarted = true;
+    refreshMyName();
     await loadExisting();
     await refreshGlobalTop();
     // prinde și voturile date de alții între timp — doar în tab-ul pe care îl vezi, nu în

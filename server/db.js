@@ -87,6 +87,26 @@ addColumn("annotations", "author_hash", "TEXT");
   }
 }
 db.exec(`CREATE INDEX IF NOT EXISTS idx_annotations_author_hash ON annotations(author_hash);`);
+
+// Numele afișate (opționale, unice) — vezi routes/users.js. name_key = forma de comparat.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    author_hash TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL UNIQUE,
+    updated_at INTEGER NOT NULL
+  );
+`);
+
+// „Andrei”, „andrei”, „Andréi” și „An-drei” = același nume: fără diacritice, majuscule,
+// spații și . _ -
+function nameKey(name) {
+  return String(name).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[\s._-]+/g, "");
+}
+const nameStmt = db.prepare("SELECT name FROM users WHERE author_hash = ?");
+function displayNameFor(hash) {
+  return (hash && nameStmt.get(hash)?.name) || null;
+}
 addColumn("votes", "ip_hash", "TEXT");
 addColumn("reports", "ip_hash", "TEXT");
 db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_ip ON votes(annotation_id, ip_hash);`);
@@ -139,4 +159,4 @@ function ipHash(ip) {
   return crypto.createHmac("sha256", IP_HASH_SECRET).update(String(ip || "")).digest("hex").slice(0, 32);
 }
 
-module.exports = { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash };
+module.exports = { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash, nameKey, displayNameFor };

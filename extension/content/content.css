@@ -206,6 +206,38 @@
 
 #wa-mine-list { padding: 4px; }
 
+.wa-mine-name {
+  padding: 8px 10px 0;
+  font-size: 12px;
+}
+.wa-mine-name[hidden] { display: none; }
+.wa-mine-name-label { color: #c9c3e6; }
+.wa-mine-name-edit,
+.wa-mine-name-save,
+.wa-mine-name-cancel {
+  margin-left: 6px;
+  padding: 2px 6px;
+  border: 1px solid #3d3560;
+  border-radius: 6px;
+  background: none;
+  color: #eae6ff;
+  cursor: pointer;
+  font-size: 12px;
+}
+.wa-mine-name-save { background: #7c3aed; border-color: #7c3aed; }
+.wa-mine-name-row { display: flex; align-items: center; }
+.wa-mine-name-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid #3d3560;
+  border-radius: 6px;
+  background: #15121f;
+  color: #eae6ff;
+  font-size: 12px;
+}
+.wa-mine-name-note { margin-top: 4px; color: #8b839f; font-size: 10.5px; }
+.wa-mine-name-note.wa-error { color: #fca5a5; }
 .wa-mine-count {
   padding: 6px 10px 0;
   color: #c9c3e6;
@@ -1016,6 +1048,15 @@
 .wa-consent strong { color: #c4b5fd; }
 .wa-consent a { color: #93c5fd; }
 .wa-consent-small { color: #a39cc4; font-size: 12.5px; }
+.wa-consent-name { display: grid; gap: 6px; margin: 0 0 12px; font-size: 13px; color: #eae6ff; }
+.wa-consent-name input {
+  padding: 7px 10px;
+  border: 1px solid #3d3560;
+  border-radius: 8px;
+  background: #15121f;
+  color: #eae6ff;
+  font-size: 13px;
+}
 .wa-consent-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
 .wa-consent-actions button {
   margin: 0;

@@ -44,6 +44,7 @@ function card(a) {
   const link = el("a", { href: a.url, target: "_blank", rel: "noopener noreferrer" }, a.url);
   const reason = el("input", { placeholder: "Motivul (apare în evidență)", maxlength: "500" });
   const actions = el("div", { class: "actions" });
+  if (a.authorName) actions.append(el("button", { "data-act": "reset-name" }, `Resetează numele „${a.authorName}”`));
   if (a.removedAt) {
     actions.append(el("button", { class: "ok", "data-act": "restore" }, "Repune"));
   } else {
@@ -56,6 +57,7 @@ function card(a) {
       el("span", { class: "badge" }, a.type),
       el("span", { class: a.hidden ? "badge hidden" : "badge" }, `${a.reports} raportări${a.hidden ? " · ascunsă automat" : ""}`),
       el("span", {}, `${a.votes} voturi`),
+      el("span", {}, `autor: ${a.authorName || "Utilizator " + String(a.authorHash || "????").slice(0, 4).toUpperCase()}`),
       el("span", {}, `creată ${when(a.createdAt)}`),
       a.removedAt ? el("span", {}, `scoasă ${when(a.removedAt)}`) : ""
     ),
@@ -72,8 +74,10 @@ function card(a) {
     if (!act) return;
     try {
       if (act === "remove") await api(`/annotations/${a.id}/remove`, { reason: reason.value });
+      else if (act === "reset-name") await api(`/users/${a.authorHash}/reset-name`, {});
       else await api(`/annotations/${a.id}/restore`, {});
-      $("#msg").textContent = act === "remove" ? "Adnotarea a fost scoasă." : "Adnotarea a fost repusă.";
+      $("#msg").textContent =
+        act === "remove" ? "Adnotarea a fost scoasă." : act === "reset-name" ? "Numele a fost resetat." : "Adnotarea a fost repusă.";
       load();
     } catch (err) {
       $("#msg").textContent = err.message;

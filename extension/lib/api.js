@@ -77,6 +77,27 @@
     return res.json();
   }
 
+  // Numele afișat al unui utilizator (null = fără nume ales).
+  async function getUserName(authorHash) {
+    const b = await base();
+    const res = await fetch(`${b}/api/users/${encodeURIComponent(authorHash)}`);
+    if (!res.ok) throw new Error(`Nu am putut încărca numele (${res.status})`);
+    return res.json();
+  }
+
+  // Îți alegi / schimbi numele (gol = îl ștergi). Numele e unic: dacă e luat, serverul spune.
+  async function setName(authorId, name) {
+    const b = await base();
+    const res = await fetch(`${b}/api/users/name`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authorId, name }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Numele nu a putut fi salvat (${res.status})`);
+    return body;
+  }
+
   async function vote(id, voterId, direction) {
     const b = await base();
     const res = await fetch(`${b}/api/annotations/${id}/vote`, {
@@ -144,6 +165,8 @@
     vote,
     listMine,
     listByAuthor,
+    getUserName,
+    setName,
     report,
     remove,
     checkUrl,

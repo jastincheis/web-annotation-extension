@@ -3,7 +3,7 @@
 // ca „Authorization: Bearer …”). Fără ADMIN_TOKEN setat, toată zona răspunde 404.
 const crypto = require("node:crypto");
 const express = require("express");
-const { db, REPORT_HIDE_THRESHOLD } = require("../db");
+const { db, REPORT_HIDE_THRESHOLD, displayNameFor } = require("../db");
 
 const router = express.Router();
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
@@ -32,6 +32,8 @@ function adminView(row) {
     data: JSON.parse(row.data),
     votes: row.votes,
     reports: row.reports,
+    authorHash: row.author_hash,
+    authorName: displayNameFor(row.author_hash),
     hidden: row.reports >= REPORT_HIDE_THRESHOLD,
     removedAt: row.removed_at,
     removedReason: row.removed_reason,
@@ -73,6 +75,14 @@ router.post("/annotations/:id/restore", (req, res) => {
   db.prepare("UPDATE annotations SET removed_at = NULL, removed_reason = NULL, reports = 0 WHERE id = ?").run(row.id);
   db.prepare("DELETE FROM reports WHERE annotation_id = ?").run(row.id);
   res.json(adminView(db.prepare("SELECT * FROM annotations WHERE id = ?").get(row.id)));
+});
+
+// POST /api/admin/users/:hash/reset-name — șterge un nume afișat nepotrivit; utilizatorul
+// redevine „Utilizator XXXX” și își poate alege altul.
+router.post("/users/:hash/reset-name", (req, res) => {
+  const r = db.prepare("DELETE FROM users WHERE author_hash = ?").run(req.params.hash);
+  if (!r.changes) return res.status(404).json({ error: "Utilizatorul nu are nume ales" });
+  res.json({ ok: true });
 });
 
 module.exports = router;

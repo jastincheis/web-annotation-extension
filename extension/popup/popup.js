@@ -59,3 +59,49 @@ revokeBtn.addEventListener("click", async () => {
 });
 
 renderConsent();
+
+// Numele afișat (opțional, unic) — același ca în panoul „Ale mele” de pe pagină. Doar cu
+// acordul dat: fără el, extensia nu trimite nimic serverului.
+const nameBox = document.getElementById("name-box");
+const nameInput = document.getElementById("display-name");
+const saveNameBtn = document.getElementById("save-name");
+const nameStatus = document.getElementById("name-status");
+
+async function serverBase() {
+  const { wa_server_url } = await chrome.storage.local.get("wa_server_url");
+  return wa_server_url || DEFAULT_SERVER_URL;
+}
+
+async function renderName() {
+  const { wa_consent, wa_user_hash } = await chrome.storage.local.get(["wa_consent", "wa_user_hash"]);
+  const ok = !!wa_consent && !!wa_user_hash;
+  nameBox.hidden = saveNameBtn.hidden = !ok;
+  if (!ok) return;
+  try {
+    const res = await fetch(`${await serverBase()}/api/users/${wa_user_hash}`);
+    const { name } = await res.json();
+    nameInput.value = name || "";
+    nameStatus.textContent = name ? "" : `Acum apari ca „Utilizator ${wa_user_hash.slice(0, 4).toUpperCase()}”.`;
+  } catch {
+    nameStatus.textContent = "Nu pot contacta serverul.";
+  }
+}
+
+saveNameBtn.addEventListener("click", async () => {
+  const { wa_user_id } = await chrome.storage.local.get("wa_user_id");
+  try {
+    const res = await fetch(`${await serverBase()}/api/users/name`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authorId: wa_user_id, name: nameInput.value }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Eroare ${res.status}`);
+    nameInput.value = body.name || "";
+    nameStatus.textContent = body.name ? `Salvat: apari ca „${body.name}”.` : "Numele a fost șters.";
+  } catch (err) {
+    nameStatus.textContent = `⚠️ ${err.message}`;
+  }
+});
+
+renderName();

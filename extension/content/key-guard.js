@@ -20,7 +20,7 @@
       e.stopImmediatePropagation();
       // Oprirea de mai sus blochează și ascultătorii câmpului însuși, deci Enter/Esc din
       // formularele noastre (link, link atașat...) le tratăm direct aici.
-      const pop = t.closest(".wa-popover");
+      const pop = t.closest(".wa-popover, .wa-inline-form"); // .wa-inline-form = editorul de nume din "Ale mele"
       if (pop && e.type === "keydown" && !e.isComposing) {
         if (e.key === "Enter" && t.matches("input")) {
           e.preventDefault();

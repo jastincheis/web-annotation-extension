@@ -36,6 +36,11 @@ Endpoint-uri disponibile:
   (`?url=` mai merge doar pentru extensiile vechi, ≤ 0.2.3). Fără `minVotes` le trimite pe
   toate; extensia face Top 10 pe pagină cu cel mult o adnotare per utilizator (cea mai bună a
   lui: scor, apoi vechime) și arată pe pagină doar adnotările din top
+- `GET /api/users/:authorHash` — numele afișat al unui utilizator (`null` dacă nu are)
+- `POST /api/users/name` — `{authorId, name}`: își alege / schimbă numele (gol = îl șterge); unic
+  după o cheie fără majuscule, diacritice, spații și `. _ -` (409 dacă e luat), 2–24 caractere,
+  nume rezervate refuzate; max. 10 schimbări/minut. Răspunsurile cu adnotări au `authorName`
+- `POST /api/admin/users/:authorHash/reset-name` — moderatorul șterge un nume nepotrivit
 - `GET /privacy` — politica de confidențialitate (pagină statică din `server/legal`, fără resurse externe);
   e adresa oficială folosită de extensie și în Chrome Web Store
 - `GET /api/annotations/by-author/:authorHash` — profilul public al unui utilizator: adnotările

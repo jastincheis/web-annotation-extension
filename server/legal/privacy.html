@@ -20,7 +20,7 @@
       <h1>Politică de confidențialitate</h1>
     </div>
   </div>
-  <p class="updated">Actualizată: 10 octombrie 2026 · se aplică versiunii 0.2.9 și celor următoare</p>
+  <p class="updated">Actualizată: 10 octombrie 2026 · se aplică versiunii 0.2.11 și celor următoare</p>
 
   <div class="tldr">
     <div class="tldr-title">Pe scurt</div>
@@ -35,7 +35,7 @@
       </div>
       <div class="tldr-item">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.4"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12" stroke="currentColor" stroke-width="1.2"/></svg>
-        <p>Ce desenezi sau scrii e <strong>public</strong>: îl vede oricine are extensia, pe aceeași pagină și în <strong>profilul tău public</strong>, sub pseudonim.</p>
+        <p>Ce desenezi sau scrii e <strong>public</strong>: îl vede oricine are extensia, pe aceeași pagină și în <strong>profilul tău public</strong>, sub pseudonim sau sub numele ales de tine.</p>
       </div>
       <div class="tldr-item">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -73,7 +73,8 @@
           <tr><td>Paginile pe care le deschizi</td><td>Doar amprenta (hash SHA-256) adresei, ca să-ți arătăm adnotările de pe pagina respectivă. Adresa în sine nu este trimisă.</td></tr>
           <tr><td>Paginile pe care adnotezi</td><td>Adresa completă a paginii, ca alți utilizatori s-o găsească. Din adresă scoatem parametrii de urmărire (ex. <code>utm_</code>, <code>fbclid</code>) și pe cei sensibili (ex. <code>token</code>, <code>code</code>, <code>session</code>, <code>email</code>). Pe YouTube păstrăm doar ID-ul video-ului, pe Netflix doar ID-ul titlului.</td></tr>
           <tr><td>Adnotările tale</td><td>Ce creezi: desen, spray, formă, text, bulă, link, plus culoarea, poziția, intervalul dintr-un video și linkul atașat, dacă există. Sunt publice.</td></tr>
-          <tr><td>Profilul public</td><td>Oricine are extensia poate deschide, printr-un click pe autorul unei adnotări, profilul acelui autor: toate adnotările lui vizibile, de pe toate paginile, împreună cu adresa fiecărei pagini și numărul de voturi. Profilul e identificat doar prin amprenta pseudonimului tău, nu prin nume. Conține numai paginile pe care <strong>ai pus tu adnotări</strong>, nu paginile pe care le-ai vizitat. Dacă ștergi o adnotare, dispare și din profil.</td></tr>
+          <tr><td>Profilul public</td><td>Oricine are extensia poate deschide, printr-un click pe autorul unei adnotări, profilul acelui autor: toate adnotările lui vizibile, de pe toate paginile, împreună cu adresa fiecărei pagini și numărul de voturi. Profilul e identificat prin amprenta pseudonimului tău sau prin numele ales de tine, dacă ai unul. Conține numai paginile pe care <strong>ai pus tu adnotări</strong>, nu paginile pe care le-ai vizitat. Dacă ștergi o adnotare, dispare și din profil.</td></tr>
+          <tr><td>Numele afișat</td><td>Opțional. Dacă îți alegi un nume, el apare public lângă adnotările tale, în clasament și în profilul tău, în locul pseudonimului „Utilizator” urmat de 4 caractere. Numele e unic: nu îl poate purta altcineva. Îl poți schimba sau șterge oricând din „Ale mele” sau din meniul extensiei; un administrator îl poate reseta dacă încalcă regulile. Nu folosi numele real complet.</td></tr>
           <tr><td>Voturi și raportări</td><td>Ce adnotare ai votat sau raportat, legat de identificatorul tău și de o amprentă a adresei IP (cod HMAC calculat cu o cheie secretă a serverului, din care IP-ul nu poate fi citit), ca să nu se poată umfla voturile sau raportările cu identități inventate de pe aceeași conexiune. La raportare păstrăm și motivul ales, detaliile scrise de tine și momentul raportării.</td></tr>
           <tr><td>Moderare</td><td>Dacă o adnotare e scoasă pentru că încalcă legea sau <a href="https://claude.ai/artifact/Y1zMCdLSAioXzbo2t3Jztd">termenii de utilizare</a>, păstrăm adnotarea, momentul și motivul scoaterii, ca evidență.</td></tr>
           <tr><td>Date tehnice</td><td>Adresa IP și datele obișnuite ale unei cereri web (ora, navigatorul). Serverul le folosește pentru a limita abuzurile (număr de cereri pe minut) și nu salvează IP-ul în baza de date, ci doar amprenta descrisă mai sus, la voturi și raportări. Furnizorul de găzduire le poate păstra în jurnalele lui tehnice.</td></tr>
