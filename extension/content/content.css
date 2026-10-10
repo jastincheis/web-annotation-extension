@@ -1018,7 +1018,8 @@
   background-clip: text;
   color: transparent;
 }
-.wa-stats-caption { color: #a39cc4; margin: 2px 0 10px; }
+.wa-stats-caption { color: #a39cc4; margin: 2px 0 6px; }
+.wa-stats-users { margin: 0 0 10px; color: #eae6ff; font-weight: 600; }
 .wa-stats-row {
   display: grid;
   grid-template-columns: 20px 74px minmax(0, 1fr) 40px;

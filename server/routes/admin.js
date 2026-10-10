@@ -3,7 +3,7 @@
 // ca „Authorization: Bearer …”). Fără ADMIN_TOKEN setat, toată zona răspunde 404.
 const crypto = require("node:crypto");
 const express = require("express");
-const { db, REPORT_HIDE_THRESHOLD, displayNameFor, nameKey } = require("../db");
+const { db, REPORT_HIDE_THRESHOLD, displayNameFor, nameKey, collectUsers } = require("../db");
 
 const router = express.Router();
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
@@ -54,6 +54,21 @@ router.get("/queue", (req, res) => {
     )
     .all();
   res.json(rows.map(adminView));
+});
+
+// GET /api/admin/users — toți utilizatorii care au lăsat vreo urmă (vezi collectUsers), cu nume,
+// cont cu parolă, câte adnotări (și câte vizibile), voturi date, raportări făcute și ultima
+// activitate. Cei mai recenți primii. Căutarea se face în pagină (lista e mică).
+router.get("/users", (_req, res) => {
+  const accounts = new Map(db.prepare("SELECT author_hash, name, password_hash FROM users").all().map((r) => [r.author_hash, r]));
+  const list = [...collectUsers()].map(([hash, u]) => ({
+    hash,
+    name: accounts.get(hash)?.name || null,
+    hasPassword: !!accounts.get(hash)?.password_hash,
+    ...u,
+  }));
+  list.sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0));
+  res.json(list);
 });
 
 // POST /api/admin/annotations/:id/remove  { reason } — scoate adnotarea pentru toată lumea.

@@ -18,6 +18,7 @@
     <nav id="tabs" hidden>
       <button data-status="reported" class="active">Raportate</button>
       <button data-status="removed">Scoase</button>
+      <button data-status="users">Utilizatori</button>
       <button id="logout" type="button">Ieși</button>
     </nav>
   </header>
@@ -34,6 +35,10 @@
   </form>
   <div id="pass-result" hidden></div>
   <p id="msg" role="status"></p>
+  <div id="user-tools" hidden>
+    <input id="user-search" type="search" placeholder="Caută după nume sau ID public…" autocomplete="off">
+    <span id="user-count"></span>
+  </div>
   <main id="list"></main>
   <script src="admin.js"></script>
 </body>

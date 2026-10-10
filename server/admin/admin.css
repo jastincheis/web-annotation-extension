@@ -31,3 +31,12 @@ main { max-width: 1000px; margin: 0 auto; display: grid; gap: 12px; }
 #pass-form input { flex: 1 1 180px; }
 #pass-result { padding: 10px 12px; border: 1px solid currentColor; border-radius: 8px; font-size: 14px; }
 #pass-result code { font-size: 16px; user-select: all; }
+#user-tools { max-width: 1000px; margin: 0 auto 12px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+#user-tools[hidden] { display: none; }
+#user-search { flex: 1 1 260px; min-width: 0; }
+#user-count { color: var(--muted); }
+.user-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.user-name { font-weight: 600; font-size: 15px; }
+.user-id { color: var(--muted); font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; user-select: all; }
+.user-anns { margin: 0; padding-left: 18px; color: var(--muted); }
+.user-anns a { color: #93c5fd; overflow-wrap: anywhere; }

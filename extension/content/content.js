@@ -342,7 +342,9 @@
       byType[ann.type] = (byType[ann.type] || 0) + 1;
       if (hasAttachedLink(ann)) withLink++;
     });
-    return { total: state.annotations.size, byType, withLink };
+    const authors = new Set();
+    state.annotations.forEach(({ ann }) => authors.add(ann.authorHash || ann.id));
+    return { total: state.annotations.size, byType, withLink, users: authors.size };
   }
 
   function formatCount(n) {
@@ -411,6 +413,15 @@
           : `adnotări pe ${data.pages.toLocaleString("ro-RO")} ${data.pages === 1 ? "pagină" : "pagini"}`
       )
     );
+    // utilizatori: pe pagină = câți autori diferiți; global = cine a scris, votat sau și-a ales nume
+    if (typeof data.users === "number") {
+      const n = data.users.toLocaleString("ro-RO");
+      const label =
+        statsScope === "page"
+          ? data.users === 1 ? "autor pe pagina asta" : "autori pe pagina asta"
+          : data.users === 1 ? "utilizator activ" : "utilizatori activi";
+      body.appendChild(el("div", { class: "wa-stats-users" }, `👥 ${n} ${label}`));
+    }
     const max = Math.max(1, ...COUNT_TYPES.map(([t]) => data.byType[t] || 0));
     COUNT_TYPES.forEach(([type, label]) => {
       const n = data.byType[type] || 0;

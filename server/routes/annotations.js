@@ -1,7 +1,7 @@
 const crypto = require("node:crypto");
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash, displayNameFor } = require("../db");
+const { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash, displayNameFor, collectUsers } = require("../db");
 
 // Pagina se identifică prin amprenta adresei (?urlHash=, 64 hex) — varianta nouă, care nu
 // trimite adresa. ?url= rămâne doar pentru extensiile încă neactualizate (≤ 0.2.3).
@@ -157,6 +157,7 @@ router.get("/stats", (req, res) => {
     global.pages = db
       .prepare(`SELECT COUNT(DISTINCT url) AS n FROM annotations WHERE ${VISIBLE}`)
       .get().n;
+    global.users = collectUsers().size; // cine a scris, votat, raportat sau și-a ales un nume
     globalStatsCache = { data: global, expiresAt: Date.now() + STATS_CACHE_TTL_MS };
   }
   const out = { global: globalStatsCache.data };

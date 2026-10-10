@@ -40,6 +40,8 @@ Endpoint-uri disponibile:
 - `POST /api/users/name` — `{authorId, name}`: își alege / schimbă numele (gol = îl șterge); unic
   după o cheie fără majuscule, diacritice, spații și `. _ -` (409 dacă e luat), 2–24 caractere,
   nume rezervate refuzate (admin…, moderator…, adormis…, utilizator… ca început; tu, mod, staff etc. doar ca nume întreg); max. 10 schimbări/minut. Răspunsurile cu adnotări au `authorName`
+- `GET /api/admin/users` — toți utilizatorii care au scris, votat, raportat sau și-au ales un nume:
+  nume, cont cu parolă, adnotări (și câte vizibile), voturi, raportări, prima/ultima activitate (tab „Utilizatori” din /admin, cu căutare)
 - `POST /api/admin/users/reset-password` — `{name}`: parolă temporară (arătată o singură dată) +
   numărul și ultimele adnotări ale contului, ca moderatorul să verifice cererea; fără garanție pentru utilizator
 - `POST /api/admin/users/:authorHash/set-name` — `{name}`: moderatorul dă un nume, inclusiv unul
@@ -59,8 +61,8 @@ Endpoint-uri disponibile:
 - `GET /api/annotations/top?limit=10` — cele mai votate adnotări de pe toate paginile
   (min. 1 vot, `limit` max. 50, cache 10s)
 - `GET /api/annotations/stats?urlHash=<sha256(url)>` — numărul de adnotări pe tipuri:
-  `{global: {total, byType, withLink, pages}, page: {total, byType, withLink}}`
-  (`page` doar dacă e dată pagina; partea globală are cache 30s)
+  `{global: {total, byType, withLink, pages, users}, page: {total, byType, withLink}}`
+  (`users` = câți au scris, votat, raportat sau și-au ales nume; `page` doar dacă e dată pagina; partea globală are cache 30s)
 - `POST /api/annotations` — creează `{url, type, data, authorId}`
 - `PATCH /api/annotations/:id` — `{authorId, patch}` (mutare sau editare text/link; doar autorul)
 - `DELETE /api/annotations/:id` — `{authorId}` (doar autorul își poate șterge propria adnotare)

@@ -151,6 +151,45 @@ function purgeOldRemoved() {
 purgeOldRemoved();
 setInterval(purgeOldRemoved, 24 * 60 * 60 * 1000).unref();
 
+// Toți utilizatorii care au lăsat vreo urmă: au scris o adnotare, au votat, au raportat sau
+// și-au ales un nume. Cine doar a instalat extensia nu apare — nu ținem evidența instalărilor.
+// Întoarce Map(authorHash -> { annotations, visible, votes, lastAt, firstAt }).
+const shortHash = (id) => sha256Hex(id).slice(0, 32);
+function collectUsers() {
+  const users = new Map();
+  const get = (hash) => {
+    if (!users.has(hash)) users.set(hash, { annotations: 0, visible: 0, votes: 0, reports: 0, firstAt: null, lastAt: null });
+    return users.get(hash);
+  };
+  const seen = (u, t) => {
+    if (!t) return;
+    if (!u.firstAt || t < u.firstAt) u.firstAt = t;
+    if (!u.lastAt || t > u.lastAt) u.lastAt = t;
+  };
+  const rows = db
+    .prepare(
+      `SELECT author_hash, COUNT(*) AS n, SUM(CASE WHEN ${VISIBLE} THEN 1 ELSE 0 END) AS v,
+              MIN(created_at) AS first, MAX(created_at) AS last
+       FROM annotations GROUP BY author_hash`
+    )
+    .all();
+  for (const r of rows) {
+    const u = get(r.author_hash);
+    u.annotations = r.n;
+    u.visible = r.v;
+    seen(u, r.first);
+    seen(u, r.last);
+  }
+  for (const r of db.prepare("SELECT voter_id, COUNT(*) AS n FROM votes GROUP BY voter_id").all()) get(shortHash(r.voter_id)).votes = r.n;
+  for (const r of db.prepare("SELECT reporter_id, COUNT(*) AS n, MAX(created_at) AS last FROM reports GROUP BY reporter_id").all()) {
+    const u = get(shortHash(r.reporter_id));
+    u.reports = r.n;
+    seen(u, r.last);
+  }
+  for (const r of db.prepare("SELECT author_hash, updated_at FROM users").all()) seen(get(r.author_hash), r.updated_at);
+  return users;
+}
+
 // Condiția „vizibilă public”: nu ascunsă de raportări și nu scoasă de moderator.
 const VISIBLE = `reports < ${REPORT_HIDE_THRESHOLD} AND removed_at IS NULL`;
 
@@ -164,4 +203,4 @@ function ipHash(ip) {
   return crypto.createHmac("sha256", IP_HASH_SECRET).update(String(ip || "")).digest("hex").slice(0, 32);
 }
 
-module.exports = { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash, nameKey, displayNameFor };
+module.exports = { collectUsers, db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash, nameKey, displayNameFor };

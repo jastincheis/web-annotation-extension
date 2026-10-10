@@ -1,4 +1,4 @@
 {
-  "latest": "0.2.17",
-  "notes": "Topul arată detaliile la hover (click = mergi la adnotare); bara OK/Anulează apare chiar lângă ce desenezi sau scrii."
+  "latest": "0.2.18",
+  "notes": "Contorul de adnotări arată și câți utilizatori sunt (pe pagină și în toată aplicația); în /admin, listă de utilizatori cu căutare."
 }
