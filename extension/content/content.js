@@ -1435,6 +1435,160 @@
     });
   }
 
+  // ---------- Adnotări suprapuse ----------
+  // Când sub cursor sunt 2+ adnotări, în dreapta apare un meniu cu ele (max. 10), în ordinea
+  // în care se văd — de sus în jos —, fiecare cu un fragment, autorul, scorul și 👍 👎 🚩.
+  // Hover pe un rând = acea adnotare iese în evidență (contur), celelalte din grămadă se
+  // estompează. Nu schimbăm z-index-ul sau ordinea: browserul ne spune ce e sub cursor
+  // (elementsFromPoint, pe forma reală a desenelor), iar acțiunile pe cele de dedesubt trec
+  // prin meniu. O singură adnotare sub cursor = nimic nou.
+  const OVERLAP_MAX = 10;
+  const overlap = { menu: null, ids: "", hideTimer: null, raf: 0, x: 0, y: 0 };
+
+  function annotationsAt(x, y) {
+    const found = [];
+    const seen = new Set();
+    const nodes = document.elementsFromPoint(x, y);
+    // peste bara, panourile sau formularele extensiei nu deschidem meniul
+    if (nodes[0]?.closest?.("#wa-toolbar, #wa-topbar, #wa-mine-panel, #wa-leaderboard-panel, .wa-popover, .wa-lb-detail, .wa-vote, .wa-handle")) return [];
+    for (const node of nodes) {
+      if (node.closest?.("#wa-overlap-menu")) return null; // cursorul e pe meniu — lasă-l cum e
+      for (const entry of state.annotations.values()) {
+        const elm = entry.el;
+        if (!elm || seen.has(entry.ann.id)) continue;
+        if (elm !== node && !elm.contains(node)) continue;
+        if (getComputedStyle(elm).display === "none") continue;
+        seen.add(entry.ann.id);
+        found.push(entry);
+      }
+      if (found.length >= OVERLAP_MAX) break;
+    }
+    return found;
+  }
+
+  function scheduleOverlapHide() {
+    clearTimeout(overlap.hideTimer);
+    overlap.hideTimer = setTimeout(closeOverlapMenu, 450);
+  }
+
+  function closeOverlapMenu() {
+    clearTimeout(overlap.hideTimer);
+    clearOverlapFocus();
+    overlap.menu?.remove();
+    overlap.menu = null;
+    overlap.ids = "";
+  }
+
+  function clearOverlapFocus() {
+    document.querySelectorAll(".wa-overlap-focus, .wa-overlap-dim").forEach((n) => n.classList.remove("wa-overlap-focus", "wa-overlap-dim"));
+  }
+
+  function focusOverlapEntry(target, stack) {
+    clearOverlapFocus();
+    stack.forEach((entry) => entry.el?.classList.add(entry === target ? "wa-overlap-focus" : "wa-overlap-dim"));
+  }
+
+  async function overlapVote(ann, direction) {
+    try {
+      const updated = await WA_Api.vote(ann.id, state.userId, direction);
+      updateVotes(ann.id, updated.votes);
+      const score = overlap.menu?.querySelector(`[data-ann="${CSS.escape(ann.id)}"] .wa-ov-score`);
+      if (score) score.textContent = String(updated.votes);
+    } catch (err) {
+      showSaveError(err.message || "Votul nu a putut fi trimis.");
+    }
+  }
+
+  function openOverlapMenu(stack, x, y) {
+    closeOverlapMenu();
+    overlap.ids = stack.map((e) => e.ann.id).join(",");
+    const rows = stack.map((entry, i) => {
+      const ann = entry.ann;
+      const mine = isMine(ann);
+      const actions = mine
+        ? [el("span", { class: "wa-ov-mine" }, "a ta")]
+        : [
+            el("button", { class: "wa-ov-up", title: "Like", onclick: () => overlapVote(ann, "up") }, "👍"),
+            el("span", { class: "wa-ov-score" }, String(ann.votes)),
+            el("button", { class: "wa-ov-down", title: "Dislike", onclick: () => overlapVote(ann, "down") }, "👎"),
+            el("button", {
+              class: "wa-ov-report",
+              title: "Raportează",
+              onclick: (e) => {
+                pauseVideoIfPlaying();
+                openReportForm(ann, e.clientX, e.clientY, () => (e.target.textContent = "🚩✓"));
+              },
+            }, "🚩"),
+          ];
+      const row = el(
+        "div",
+        { class: "wa-ov-row", "data-ann": ann.id },
+        el("span", { class: "wa-ov-pos", title: i === 0 ? "Deasupra" : `Stratul ${i + 1}` }, String(i + 1)),
+        el("span", { class: "wa-ov-icon" }, annotationIcon(ann.type)),
+        el("span", { class: "wa-ov-text" }, el("span", { class: "wa-ov-label" }, shortLabel(ann)), el("span", { class: "wa-ov-author" }, authorLabel(ann.authorHash))),
+        el("span", { class: "wa-ov-actions" }, ...actions)
+      );
+      row.addEventListener("mouseenter", () => focusOverlapEntry(entry, stack));
+      row.addEventListener("mouseleave", clearOverlapFocus);
+      return row;
+    });
+    const menu = el(
+      "div",
+      { id: "wa-overlap-menu", role: "menu", "aria-label": "Adnotări suprapuse" },
+      el("div", { class: "wa-ov-head" }, `${stack.length} adnotări suprapuse aici`),
+      ...rows
+    );
+    menu.addEventListener("mouseenter", () => clearTimeout(overlap.hideTimer));
+    menu.addEventListener("mouseleave", scheduleOverlapHide);
+    ["pointerdown", "mousedown", "click"].forEach((t) => menu.addEventListener(t, (e) => e.stopPropagation()));
+    // În dreapta GRĂMEZII (nu a cursorului), ca să nu acopere chiar adnotările pe care le arată;
+    // fără loc în dreapta → în stânga ei.
+    const box = stack.reduce(
+      (u, e) => {
+        const r = e.el.getBoundingClientRect();
+        return { left: Math.min(u.left, r.left), top: Math.min(u.top, r.top), right: Math.max(u.right, r.right) };
+      },
+      { left: Infinity, top: Infinity, right: -Infinity }
+    );
+    uiHost().appendChild(menu);
+    const w = menu.offsetWidth || 290;
+    let left = box.right + 12;
+    if (left + w > window.innerWidth - 8 && box.left - 12 - w >= 8) left = box.left - 12 - w;
+    menu.style.left = left + "px";
+    menu.style.top = Math.max(8, box.top) + "px";
+    clampToViewport(menu);
+    overlap.menu = menu;
+  }
+
+  function onOverlapPointer() {
+    overlap.raf = 0;
+    if (state.activeTool && state.activeTool !== "select") return closeOverlapMenu(); // cât desenezi, fără meniu
+    const stack = annotationsAt(overlap.x, overlap.y);
+    if (stack === null) return; // pe meniu
+    if (stack.length < 2) {
+      if (overlap.menu) scheduleOverlapHide();
+      return;
+    }
+    clearTimeout(overlap.hideTimer);
+    const ids = stack.map((e) => e.ann.id).join(",");
+    if (ids !== overlap.ids) openOverlapMenu(stack, overlap.x, overlap.y);
+  }
+
+  function initOverlapMenu() {
+    document.addEventListener("fullscreenchange", closeOverlapMenu); // straturile își schimbă locul
+    window.addEventListener("scroll", () => overlap.menu && closeOverlapMenu(), { passive: true });
+    document.addEventListener(
+      "mousemove",
+      (e) => {
+        if (!state.annotations.size) return;
+        overlap.x = e.clientX;
+        overlap.y = e.clientY;
+        if (!overlap.raf) overlap.raf = requestAnimationFrame(onOverlapPointer);
+      },
+      { passive: true, capture: true }
+    );
+  }
+
   function updateVotes(id, votes) {
     const entry = state.annotations.get(id);
     if (!entry) return;
@@ -4121,6 +4275,7 @@
     initTextTool();
     initBubbleTool();
     initLinkTool();
+    initOverlapMenu();
     wireTopbarReveal();
     loadDockPosition();
     loadStyle();
