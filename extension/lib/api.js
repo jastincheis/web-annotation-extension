@@ -57,6 +57,26 @@
     return res.json();
   }
 
+  // Toate adnotările proprii, de pe toate paginile (panoul „Ale mele → Toate”).
+  async function listMine(authorId) {
+    const b = await base();
+    const res = await fetch(`${b}/api/annotations/mine`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authorId }),
+    });
+    if (!res.ok) throw new Error(`Nu am putut încărca adnotările tale (${res.status})`);
+    return res.json();
+  }
+
+  // Profilul public al unui utilizator: adnotările lui de pe toate paginile, după voturi.
+  async function listByAuthor(authorHash) {
+    const b = await base();
+    const res = await fetch(`${b}/api/annotations/by-author/${encodeURIComponent(authorHash)}`);
+    if (!res.ok) throw new Error(`Nu am putut încărca adnotările utilizatorului (${res.status})`);
+    return res.json();
+  }
+
   async function vote(id, voterId, direction) {
     const b = await base();
     const res = await fetch(`${b}/api/annotations/${id}/vote`, {
@@ -122,6 +142,8 @@
     createAnnotation,
     updateAnnotation,
     vote,
+    listMine,
+    listByAuthor,
     report,
     remove,
     checkUrl,

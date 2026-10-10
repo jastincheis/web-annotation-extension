@@ -24,7 +24,7 @@ CE POȚI FACE
 • Top global — cele mai votate adnotări de pe toate paginile, cu acces direct la pagina lor
 
 CUM FUNCȚIONEAZĂ
-Adnotările sunt publice: oricine are extensia instalată le vede pe aceeași pagină. Doar autorul unei adnotări o poate muta, edita sau șterge.
+Adnotările sunt publice: oricine are extensia instalată le vede pe aceeași pagină și în profilul public al autorului (sub pseudonim). Pe fiecare pagină apare un Top 10, cu cel mult o adnotare per utilizator. Doar autorul unei adnotări o poate muta, edita sau șterge.
 
 Confidențialitate: la prima folosire extensia îți cere acordul și nu trimite nimic înainte de el. Pentru paginile pe care le deschizi trimite doar o amprentă (hash) a adresei, nu adresa; adresa reală pleacă doar pentru paginile pe care adaugi o adnotare. Nu ai nevoie de cont: primești un identificator pseudonim, generat local. Paginile locale și interne sunt ignorate. Acordul se retrage oricând din meniul extensiei. Detalii în politica de confidențialitate.
 

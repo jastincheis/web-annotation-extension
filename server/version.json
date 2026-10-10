@@ -1,4 +1,4 @@
 {
-  "latest": "0.2.8",
-  "notes": "Linkurile și voturile merg în fullscreen; meniul stă lipit sub comentariu; pe X comentariile rămân pe video și în fullscreen; fără like pe comentariile tale."
+  "latest": "0.2.9",
+  "notes": "Top 10 pe pagină cu cel mult o adnotare per utilizator; click pe autor = profilul lui (toate adnotările, căutare, top general); salt direct la adnotare, și pe altă pagină. La pornire ți se cere din nou acordul."
 }

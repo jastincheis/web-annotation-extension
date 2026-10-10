@@ -42,6 +42,7 @@ if (!hasUrlHash) db.exec("ALTER TABLE annotations ADD COLUMN url_hash TEXT");
   for (const r of missing) set.run(sha256Hex(r.url), r.id);
 }
 db.exec(`CREATE INDEX IF NOT EXISTS idx_annotations_url_hash ON annotations(url_hash);`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_annotations_author ON annotations(author_id);`);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS votes (
@@ -75,6 +76,17 @@ addColumn("reports", "details", "TEXT");
 addColumn("reports", "created_at", "INTEGER");
 // Amprenta IP-ului (HMAC cu un secret al serverului, nu IP-ul): un singur vot și o singură
 // raportare pe adnotare de pe aceeași adresă IP, oricâte ID-uri ar inventa cineva.
+// Amprenta publică a autorului (aceeași ca authorHash din răspunsuri), salvată ca să se poată
+// căuta după ea — profilul unui utilizator (GET /api/annotations/by-author/:hash).
+addColumn("annotations", "author_hash", "TEXT");
+{
+  const missing = db.prepare("SELECT id, author_id FROM annotations WHERE author_hash IS NULL").all();
+  const set = db.prepare("UPDATE annotations SET author_hash = ? WHERE id = ?");
+  for (const r of missing) {
+    set.run(crypto.createHash("sha256").update(String(r.author_id)).digest("hex").slice(0, 32), r.id);
+  }
+}
+db.exec(`CREATE INDEX IF NOT EXISTS idx_annotations_author_hash ON annotations(author_hash);`);
 addColumn("votes", "ip_hash", "TEXT");
 addColumn("reports", "ip_hash", "TEXT");
 db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_ip ON votes(annotation_id, ip_hash);`);

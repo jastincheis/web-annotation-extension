@@ -206,13 +206,55 @@
 
 #wa-mine-list { padding: 4px; }
 
-.wa-mine-item {
+.wa-mine-count {
+  padding: 6px 10px 0;
+  color: #c9c3e6;
+  font-size: 11px;
+}
+.wa-mine-tabs {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  gap: 4px;
+  padding: 6px 8px 0;
+}
+.wa-mine-tab {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid #3d3560;
+  border-radius: 6px;
+  background: none;
+  color: #c9c3e6;
+  font-size: 11px;
+  cursor: pointer;
+}
+.wa-mine-tab.active { background: #7c3aed; border-color: #7c3aed; color: white; }
+.wa-mine-search {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 6px 8px 2px;
+  padding: 5px 8px;
+  border: 1px solid #3d3560;
+  border-radius: 6px;
+  background: #15121f;
+  color: #eae6ff;
+  font-size: 12px;
+}
+.wa-mine-item {
   padding: 6px 8px;
   border-radius: 6px;
   cursor: pointer;
+}
+.wa-mine-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.wa-mine-page {
+  margin: 2px 0 0 22px;
+  color: #8b839f;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .wa-mine-item:hover { background: #2a2545; }
 .wa-mine-label {
@@ -289,6 +331,20 @@
   border-color: rgba(255, 255, 255, 0.4);
 }
 .wa-lb-slot.wa-lb-filled:hover { transform: scale(1.15); }
+/* Comutatorul de deasupra bilelor: 📄 topul paginii / 🌐 topul global */
+.wa-lb-mode {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid #3d3560;
+  background: #1e1b2e;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.wa-lb-mode:hover { transform: scale(1.15); }
 
 /* Popover de detalii la click pe o cifră */
 .wa-lb-detail {
@@ -305,6 +361,19 @@
   z-index: 2147483003;
 }
 .wa-lb-detail-row { margin-top: 4px; color: #c9c3e6; }
+/* Autorul, în detaliile din Top — click = profilul lui (toate adnotările, căutare) */
+.wa-lb-detail-author {
+  display: block;
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #c4b5fd;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wa-lb-detail-author:hover { text-decoration: underline; }
 .wa-lb-detail-text { margin-top: 6px; font-weight: 600; color: #eae6ff; }
 .wa-lb-detail-close {
   float: right;

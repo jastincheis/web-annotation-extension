@@ -13,7 +13,14 @@
     shapeKind: "circle", // 'circle' | 'arrow'
     color: "#89CFF0", // baby blue
     strokeWidth: 4,
-    minVotes: 0,
+    rankVisible: new Set(), // id-urile din Top 10 al paginii (câte una per utilizator) — vezi refreshRanking
+    pageTop: [], // Top 10 al paginii — vezi refreshRanking
+    revealed: new Set(), // adnotări din afara topului arătate la cerere (salt din profil/"Ale mele")
+    panelUser: null, // amprenta utilizatorului al cărui profil e deschis (a ta = "Ale mele")
+    panelAll: null, // adnotările lui de pe toate paginile, aduse de pe server la cerere
+    topMode: "page", // panoul Top: "page" (clasamentul paginii) sau "global" (de pe toate paginile)
+    mineScope: "page", // panoul de profil: "page" (pagina asta) sau "all" (toate paginile)
+    mineQuery: "", // căutarea din panoul de profil
     myPanelOpen: false, // panoul "Ale mele" — cât e deschis, adnotările proprii sunt forțat vizibile
     annotationsLoaded: false, // devine true după ce loadExisting() termină prima cerere către server — vezi renderMineList
     annotations: new Map(), // id -> { ann, el, refEl }
@@ -511,7 +518,8 @@
   // complete (și, dacă adnotarea e pe altă pagină, un buton ca să sari acolo).
   function buildLeaderboardPanel() {
     els.leaderboardSlots = [];
-    const slots = [];
+    els.topModeBtn = el("button", { class: "wa-lb-mode", onclick: () => setTopMode(state.topMode === "page" ? "global" : "page") });
+    const slots = [els.topModeBtn];
     for (let i = 1; i <= 10; i++) {
       const slot = el("div", { class: "wa-lb-slot" }, String(i));
       els.leaderboardSlots.push(slot);
@@ -528,17 +536,56 @@
   // scheletul static.
   function buildMinePanel() {
     els.mineList = el("div", { id: "wa-mine-list" });
+    els.mineTitle = el("span", {}, "📍 Adnotările mele");
+    els.mineCount = el("div", { class: "wa-mine-count" });
+    const tab = (scope, label) =>
+      el("button", { class: "wa-mine-tab", "data-scope": scope, onclick: () => setMineScope(scope) }, label);
+    els.mineTabs = [tab("page", "Pagina asta"), tab("all", "Toate paginile")];
+    els.mineSearch = el("input", {
+      class: "wa-mine-search",
+      type: "search",
+      placeholder: "🔎 Caută în adnotări…",
+      oninput: () => {
+        state.mineQuery = els.mineSearch.value;
+        renderMineList();
+      },
+    });
+    stopKeysPropagating(els.mineSearch);
     return el(
       "div",
       { id: "wa-mine-panel", hidden: "true" },
       el(
         "div",
         { class: "wa-mine-header" },
-        el("span", {}, "📍 Adnotările mele pe pagina asta"),
-        el("button", { class: "wa-mine-close", onclick: closeTopbarNow }, "✕")
+        els.mineTitle,
+        el("button", { class: "wa-mine-close", onclick: () => setMinePanelOpen(false) }, "✕")
       ),
+      els.mineCount,
+      el("div", { class: "wa-mine-tabs" }, ...els.mineTabs),
+      els.mineSearch,
       els.mineList
     );
+  }
+
+  // "Toate paginile" = adusă de pe server: pentru tine toate ale tale (și cele ascunse de
+  // raportări), pentru altcineva profilul lui public. Ordonate după voturi (top general).
+  async function loadPanelAll() {
+    const user = state.panelUser;
+    let list;
+    try {
+      list = user === state.userHash ? await WA_Api.listMine(state.userId) : await WA_Api.listByAuthor(user);
+    } catch (err) {
+      list = [];
+      showSaveError(err.message);
+    }
+    if (state.panelUser !== user || !state.myPanelOpen) return; // între timp s-a deschis alt profil / s-a închis
+    state.panelAll = list.sort(byRank);
+    renderMineList();
+  }
+
+  function setMineScope(scope) {
+    state.mineScope = scope;
+    renderMineList();
   }
 
   const TOP_GAP = 16;
@@ -1320,21 +1367,45 @@
     entry.ann.votes = votes;
     const count = entry.control?.querySelector(".wa-count");
     if (count) count.textContent = String(votes);
-    applyVisibility(entry);
-    refreshGlobalTop(); // un vot poate schimba și clasamentul GLOBAL, nu doar cel local
+    refreshRanking(); // un vot poate muta adnotarea în/din primele 10
+    refreshGlobalTop(); // ...și clasamentul GLOBAL
   }
 
-  // Decide dacă o adnotare stă ascunsă (filtru de voturi / în afara intervalului video)
+  // Top 10 al paginii: câte O adnotare per utilizator — cea mai bună a lui de pe pagină (scor
+  // 👍 − 👎, la egalitate cea mai veche), indiferent când a publicat-o; o adnotare nouă nu o
+  // înlocuiește pe cea din top decât dacă ajunge să aibă scor mai bun. Utilizatorii se ordonează
+  // la fel (scor, apoi vechime); dacă sunt mai puțin de 10, intră toți, și cei cu scor negativ.
+  // Pe pagină se văd doar adnotările din top (plus ale tale și cele cerute explicit, vezi
+  // applyVisibility); restul se găsesc în profilul autorului.
+  const PAGE_LIMIT = 10;
+  const byRank = (a, b) => b.votes - a.votes || a.createdAt - b.createdAt;
+  function refreshRanking() {
+    const best = new Map(); // authorHash -> cea mai bună adnotare a lui de pe pagină
+    state.annotations.forEach(({ ann }) => {
+      const key = ann.authorHash || ann.id;
+      const cur = best.get(key);
+      if (!cur || byRank(ann, cur) < 0) best.set(key, ann);
+    });
+    state.pageTop = [...best.values()].sort(byRank).slice(0, PAGE_LIMIT);
+    state.rankVisible = new Set(state.pageTop.map((a) => a.id));
+    refreshVisibility();
+    renderSidebar();
+    if (state.myPanelOpen) renderMineList(); // ordinea după voturi din profil se poate schimba
+  }
+
+  // Decide dacă o adnotare stă ascunsă (în afara primelor 10 / în afara intervalului video)
   // sau vizibilă. Excepție: cât timp panoul "Ale mele" e deschis, propriile adnotări
   // ignoră ambele filtre — exact ca să le poți găsi chiar dacă n-au voturi sau nu e
   // momentul potrivit din video. Centralizat aici (nu în două locuri separate) ca cele
   // două filtre să nu se calce unul pe altul, scriind amândouă în același style.display.
   function applyVisibility(entry) {
     const mine = isMine(entry.ann);
-    const forced = state.myPanelOpen && mine;
+    // cât e deschis profilul cuiva (inclusiv "Ale mele"), adnotările lui de pe pagină se văd toate
+    const forced = state.myPanelOpen && !!entry.ann.authorHash && entry.ann.authorHash === state.panelUser;
 
     let filtered = false;
-    if (entry.ann.votes < state.minVotes) filtered = true;
+    // în afara Top 10 → ascunsă; ale tale le vezi mereu (altfel una nouă ar dispărea imediat)
+    if (!state.rankVisible.has(entry.ann.id) && !mine && !state.revealed.has(entry.ann.id)) filtered = true;
     const range = entry.ann.data?.videoRange;
     if (range) {
       const video = getMainVideo();
@@ -1354,10 +1425,6 @@
     positionAttachedLink(entry);
   }
 
-  function applyVoteFilter() {
-    state.annotations.forEach(applyVisibility);
-  }
-
   // Reaplică filtrele pe TOATE adnotările deodată — necesar la deschiderea/închiderea
   // panoului "Ale mele", care schimbă condiția de forțare pentru mai multe dintre ele
   // simultan (nu doar una, ca la un vot).
@@ -1373,7 +1440,7 @@
     entry.linkChip?.remove();
     state.annotations.delete(id);
     refreshCounter();
-    renderSidebar();
+    refreshRanking();
     if (state.myPanelOpen) renderMineList();
   }
 
@@ -1392,7 +1459,7 @@
       onHide: handles?.stopTracking,
     });
     if (handles) wireHandleDragging(ann, domEl, handles, reveal);
-    renderSidebar(); // clasamentul e mereu la zi, fără acțiune manuală
+    refreshRanking(); // clasamentul (și cine intră în primele 10) e mereu la zi
     if (state.myPanelOpen) renderMineList(); // panoul "Ale mele" prinde imediat noua adnotare
   }
 
@@ -2966,11 +3033,26 @@
   // Cele 10 cifre din panoul din dreapta: colorate (cu propria culoare) dacă există o
   // adnotare pe locul respectiv, gri dacă locul e gol. E TOP GLOBAL — cele mai votate
   // adnotări de pe TOATE paginile de pe net (nu doar pagina curentă) — vezi refreshGlobalTop.
-  // Doar repictează din state.globalTop, deja adus de pe server; nu face fetch aici.
+  // Doar repictează (state.pageTop sau state.globalTop); nu face fetch aici.
+  // Butonul de deasupra bilelor comută între topul paginii (implicit) și topul global.
+  function setTopMode(mode) {
+    state.topMode = mode;
+    chrome.storage.local.set({ wa_top_mode: mode }).catch(() => {});
+    document.querySelectorAll(".wa-lb-detail").forEach((p) => p.remove());
+    renderSidebar();
+  }
+
   function renderSidebar() {
     if (!els.leaderboardSlots) return;
 
-    const top10 = state.globalTop || [];
+    const global = state.topMode === "global";
+    if (els.topModeBtn) {
+      els.topModeBtn.textContent = global ? "🌐" : "📄";
+      els.topModeBtn.title = global
+        ? "Top global (toate paginile) — click pentru topul paginii"
+        : "Topul paginii — click pentru topul global";
+    }
+    const top10 = (global ? state.globalTop : state.pageTop) || [];
     els.leaderboardSlots.forEach((slot, i) => {
       const ann = top10[i];
       slot.onclick = null;
@@ -3011,7 +3093,18 @@
     const onThisPage = ann.url === pageKey();
 
     const rows = [
-      el("div", { class: "wa-lb-detail-row" }, `${annotationIcon(ann.type)} ${authorLabel(ann.authorHash)}`),
+      el(
+        "button",
+        {
+          class: "wa-lb-detail-author",
+          title: "Vezi toate adnotările acestui utilizator",
+          onclick: () => {
+            detail.remove();
+            openUserProfile(ann.authorHash);
+          },
+        },
+        `${annotationIcon(ann.type)} ${authorLabel(ann.authorHash)} ›`
+      ),
       el("div", { class: "wa-lb-detail-text" }, shortLabel(ann)),
       el("div", { class: "wa-lb-detail-row" }, `📄 ${shortenUrl(ann.url)}`),
     ];
@@ -3025,7 +3118,7 @@
           "button",
           {
             class: "wa-lb-detail-open",
-            onclick: () => window.open(ann.url, "_blank", "noopener,noreferrer"),
+            onclick: () => goToAnnotation(ann), // tab nou, direct la poziția adnotării
           },
           "↗ Deschide pagina"
         )
@@ -3042,24 +3135,7 @@
     uiHost().appendChild(detail);
     clampToViewport(detail);
 
-    if (onThisPage) {
-      const entry = state.annotations.get(ann.id);
-      if (ann.data?.videoRange) {
-        // Rămâne vizibilă și în fullscreen (vezi enterVideoFullscreen) — nu scoatem
-        // userul de-acolo doar ca să sară la un moment din video.
-        const video = getMainVideo();
-        seekVideo(video, ann.data.videoRange.start);
-        entry?.el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-      } else if (document.fullscreenElement && !(videoLayerActive && isVideoBound(ann))) {
-        // Adnotare statică, invizibilă cât ceva e în fullscreen (vezi locateMine) —
-        // ieșim noi înșine, altfel scroll-ul se întâmplă "pe ascuns".
-        document.exitFullscreen().finally(() =>
-          setTimeout(() => entry?.el?.scrollIntoView?.({ behavior: "smooth", block: "center" }), 100)
-        );
-      } else {
-        entry?.el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-      }
-    }
+    if (onThisPage) goToAnnotation(ann); // la poziția exactă: derulează, evidențiază (și sare în video)
 
     setTimeout(() => {
       document.addEventListener("click", function onDocClick(e) {
@@ -3075,42 +3151,82 @@
 
   // Apelat DOAR din refreshTopbarVisibility()/closeTopbarNow() — panoul nu mai are
   // buton propriu de toggle, se ține sincron cu starea tab-ului (vezi mai sus).
-  function setMinePanelOpen(open) {
-    if (state.myPanelOpen === open) return; // deja în starea cerută, nu mai facem nimic
+  // Panoul de profil: "Ale mele" (user = tu) sau profilul altcuiva (click pe autor în Top).
+  function setMinePanelOpen(open, user = state.userHash) {
+    if (state.myPanelOpen === open && (!open || state.panelUser === user)) return;
+    if (open && state.panelUser !== user) {
+      state.panelUser = user;
+      state.panelAll = null;
+      state.mineQuery = "";
+      if (els.mineSearch) els.mineSearch.value = "";
+    }
     state.myPanelOpen = open;
     els.minePanel.hidden = !open;
-    els.mineBtn?.classList.toggle("active", open);
+    els.mineBtn?.classList.toggle("active", open && user === state.userHash);
     if (open) {
+      const me = user === state.userHash;
+      els.mineTitle.textContent = me ? "📍 Adnotările mele" : `👤 ${authorLabel(user)}`;
       positionMinePanel();
       renderMineList();
+      loadPanelAll(); // și pentru numărul total, nu doar pentru tab-ul "Toate paginile"
     }
-    // deschis sau închis, câteva adnotări proprii pot trece de la ascuns la vizibil
-    // (sau invers) dintr-o singură mișcare — recalculăm pentru toate, nu doar una.
+    // deschis sau închis, adnotările acelui utilizator pot trece de la ascuns la vizibil
     refreshVisibility();
   }
 
-  // Listează TOATE adnotările proprii de pe pagina curentă, indiferent dacă sunt
-  // ascunse acum de filtrul de voturi sau de interval video (cât panoul e deschis,
-  // applyVisibility le forțează vizibile pe pagină — vezi mai sus). Click pe o
-  // intrare = sari direct la ea (locateMine), exact ca la "Top global".
+  function openUserProfile(authorHash) {
+    if (!authorHash) return;
+    setMinePanelOpen(true, authorHash);
+  }
+
+  // Profilul (al tău sau al altcuiva): numărul de adnotări, căutare, tab-ul "Pagina asta" (toate
+  // ale lui de aici, după voturi — cât e deschis panoul, se văd toate pe pagină, vezi
+  // applyVisibility) și "Toate paginile" (top general al lui). Click = sari exact la adnotare.
   function renderMineList() {
     if (!els.mineList) return;
     els.mineList.innerHTML = "";
+    els.mineTabs?.forEach((b) => b.classList.toggle("active", b.dataset.scope === state.mineScope));
+    const user = state.panelUser;
+    const me = user === state.userHash;
+    const all = state.mineScope === "all";
 
-    const mine = [...state.annotations.values()]
+    const onPage = [...state.annotations.values()]
       .map((entry) => entry.ann)
-      .filter((ann) => isMine(ann))
-      .sort((a, b) => a.createdAt - b.createdAt);
+      .filter((ann) => ann.authorHash === user)
+      .sort(byRank);
+    if (els.mineCount) {
+      const total = state.panelAll ? state.panelAll.length : "…";
+      els.mineCount.textContent = `${onPage.length} pe pagina asta · ${total} în total`;
+    }
 
-    if (!mine.length) {
-      const message = state.annotationsLoaded
-        ? "N-ai pus încă nimic pe pagina asta."
-        : "⏳ Se încarcă...";
+    let list;
+    if (all) {
+      if (!state.panelAll) {
+        els.mineList.appendChild(el("div", { class: "wa-mine-empty" }, "⏳ Se încarcă..."));
+        return;
+      }
+      list = state.panelAll;
+    } else {
+      list = onPage;
+    }
+
+    const q = state.mineQuery.trim().toLowerCase();
+    if (q) list = list.filter((ann) => `${shortLabel(ann)} ${ann.data?.url || ""} ${ann.url}`.toLowerCase().includes(q));
+
+    if (!list.length) {
+      const message = q
+        ? "Nimic găsit."
+        : all
+          ? me ? "N-ai pus încă nicio adnotare." : "Nicio adnotare."
+          : !state.annotationsLoaded
+            ? "⏳ Se încarcă..."
+            : me ? "N-ai pus încă nimic pe pagina asta." : "Nimic pe pagina asta.";
       els.mineList.appendChild(el("div", { class: "wa-mine-empty" }, message));
       return;
     }
 
-    mine.forEach((ann) => {
+    const here = pageKey();
+    list.forEach((ann) => {
       const children = [
         el("span", { class: "wa-mine-icon" }, annotationIcon(ann.type)),
         el("span", { class: "wa-mine-label" }, shortLabel(ann)),
@@ -3119,11 +3235,48 @@
         children.push(el("span", { class: "wa-mine-time" }, `🎬 ${formatTime(ann.data.videoRange.start)}`));
       }
       children.push(el("span", { class: "wa-mine-votes" }, `${ann.votes} 👍`));
+      const row = [el("div", { class: "wa-mine-row" }, ...children)];
+      if (all) row.push(el("div", { class: "wa-mine-page" }, ann.url === here ? "📄 pagina asta" : `📄 ${shortenUrl(ann.url)}`));
 
-      els.mineList.appendChild(
-        el("div", { class: "wa-mine-item", onclick: () => locateMine(ann) }, ...children)
-      );
+      els.mineList.appendChild(el("div", { class: "wa-mine-item", onclick: () => goToAnnotation(ann) }, ...row));
     });
+  }
+
+  // Duce la poziția exactă a unei adnotări. Pe pagina asta: o arată (chiar dacă e în afara
+  // topului), derulează și o evidențiază. Pe altă pagină: o deschide într-un tab nou și, după
+  // încărcare, face același lucru acolo (cererea trece prin chrome.storage — locatePendingAnnotation).
+  const PENDING_LOCATE_KEY = "wa_pending_locate";
+  function goToAnnotation(ann) {
+    if (ann.url === pageKey()) {
+      const entry = state.annotations.get(ann.id);
+      if (entry) {
+        state.revealed.add(ann.id);
+        applyVisibility(entry);
+        return locateMine(entry.ann);
+      }
+    }
+    if (!/^https?:\/\//i.test(String(ann.url))) return;
+    chrome.storage.local
+      .set({ [PENDING_LOCATE_KEY]: { id: ann.id, url: ann.url, at: Date.now() } })
+      .catch(() => {})
+      .finally(() => window.open(ann.url, "_blank", "noopener,noreferrer"));
+  }
+
+  async function locatePendingAnnotation() {
+    let pending;
+    try {
+      pending = (await chrome.storage.local.get(PENDING_LOCATE_KEY))[PENDING_LOCATE_KEY];
+    } catch {
+      return;
+    }
+    if (!pending || pending.url !== pageKey()) return;
+    chrome.storage.local.remove(PENDING_LOCATE_KEY).catch(() => {});
+    if (Date.now() - pending.at > 60_000) return; // cerere veche, uitată
+    const entry = state.annotations.get(pending.id);
+    if (!entry) return;
+    state.revealed.add(pending.id);
+    applyVisibility(entry);
+    setTimeout(() => locateMine(entry.ann), 400);
   }
 
   // Sare la o adnotare proprie: derulează spre ea, o pune la timpul potrivit din
@@ -3491,6 +3644,7 @@
       list.forEach(renderAnnotation);
       sizeLayers();
       repositionAnchoredAnnotations(); // pagina poate fi deja alt layout decât la creare
+      locatePendingAnnotation(); // deschisă dintr-un profil / din Top? sari la adnotare
     } catch (err) {
       console.warn("[Adormis] Nu pot contacta serverul (e pornit?):", err);
     } finally {
@@ -3531,7 +3685,10 @@
     els.videoElements.innerHTML = "";
     movedIntoVideoLayer.length = 0;
     state.annotations.clear();
+    state.panelAll = null; // lista "Toate paginile" se reîncarcă la următoarea deschidere
+    state.revealed.clear();
     refreshCounter();
+    refreshRanking();
     document.querySelectorAll(".wa-popover, .wa-spray-confirm, .wa-lb-detail").forEach((p) => p.remove());
     setActiveTool(null);
     setMinePanelOpen(false); // lista era pentru pagina veche — se reface la o nouă deschidere
@@ -3547,8 +3704,9 @@
   // Până la acord, extensia nu trimite NIMIC la server: nici amprenta paginii, nici Topul.
   // Acordul e global (o singură dată), ținut în chrome.storage; se retrage din popup.
   const CONSENT_KEY = "wa_consent";
-  const CONSENT_VERSION = 2; // crește dacă se schimbă ce date se trimit — se cere acord din nou
-  // (2: amprenta IP la voturi/raportări, motivul raportărilor, termenii de utilizare)
+  const CONSENT_VERSION = 3; // crește dacă se schimbă ce date se trimit — se cere acord din nou
+  // (2: amprenta IP la voturi/raportări, motivul raportărilor, termenii de utilizare;
+  //  3: profilul public — adnotările unui autor de pe toate paginile, grupate)
   const PRIVACY_URL = "https://claude.ai/code/artifact/5b5b0d64-a764-4407-b294-96b377a36e41";
   const TERMS_URL = "https://claude.ai/artifact/Y1zMCdLSAioXzbo2t3Jztd";
 
@@ -3582,6 +3740,7 @@
           "la fiecare pagină deschisă, extensia trimite serverului nostru o amprentă (hash) a adresei, nu adresa. Adresa reală pleacă doar pentru paginile pe care adaugi tu o adnotare."
         ),
         item("Public:", "ce desenezi sau scrii e vizibil pentru oricine are extensia, pe aceeași pagină. Nu posta conținut ilegal, ură, hărțuire sau date personale ale altora."),
+        item("Profil public:", "cine dă click pe autorul unei adnotări vede toate adnotările lui, de pe toate paginile, cu adresa paginilor — sub pseudonim, fără nume. Apar doar paginile pe care ai adnotat, nu cele vizitate."),
         item(
           "Identitate:",
           "primești un ID generat pe dispozitivul tău (pseudonim, fără nume sau email). Serverul vede adresa IP a cererilor."
@@ -3700,8 +3859,11 @@
     loadDockPosition();
     loadStyle();
     chrome.storage.local
-      .get("wa_top_hidden")
-      .then(({ wa_top_hidden }) => wa_top_hidden && toggleLeaderboard(false))
+      .get(["wa_top_hidden", "wa_top_mode"])
+      .then(({ wa_top_hidden, wa_top_mode }) => {
+        if (wa_top_hidden) toggleLeaderboard(false);
+        if (wa_top_mode === "global") setTopMode("global");
+      })
       .catch(() => {});
     watchForNavigation();
     runOnboarding();

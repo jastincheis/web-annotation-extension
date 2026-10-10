@@ -92,13 +92,15 @@ function serialize(row) {
   };
 }
 
-// GET /api/annotations?url=<page url>&minVotes=0
+// GET /api/annotations?urlHash=<amprentă>[&minVotes=N]
+// Fără minVotes se trimit toate (și cele cu scor negativ): extensia decide ce arată — dacă
+// pe pagină sunt cel mult 10, pe toate; altfel primele 10 din clasament (vezi refreshRanking).
 router.get("/", (req, res) => {
   const { minVotes } = req.query;
   const urlHash = pageHashFromQuery(req.query);
   if (!urlHash) return res.status(400).json({ error: "Missing urlHash (or url) query param" });
 
-  const min = Number.isFinite(Number(minVotes)) ? Number(minVotes) : 0;
+  const min = minVotes !== undefined && Number.isFinite(Number(minVotes)) ? Number(minVotes) : -Number.MAX_SAFE_INTEGER;
 
   const rows = db
     .prepare(
@@ -184,6 +186,36 @@ router.get("/top", (req, res) => {
   res.json(data);
 });
 
+// GET /api/annotations/by-author/:hash — profilul public al unui utilizator: adnotările lui
+// vizibile, de pe toate paginile, cele mai votate primele (la egalitate, cele mai vechi).
+// Se caută după amprenta publică (authorHash), niciodată după secretul authorId.
+router.get("/by-author/:hash", (req, res) => {
+  const { hash } = req.params;
+  if (!/^[0-9a-f]{32}$/.test(hash)) return res.status(400).json({ error: "Utilizator invalid" });
+  const rows = db
+    .prepare(
+      `SELECT * FROM annotations WHERE author_hash = ? AND ${VISIBLE}
+       ORDER BY votes DESC, created_at ASC LIMIT 500`
+    )
+    .all(hash);
+  res.json(rows.map(serialize));
+});
+
+// POST /api/annotations/mine  { authorId } — toate adnotările autorului, de pe toate paginile,
+// cele mai noi primele (panoul „Ale mele → Toate”). POST, nu GET: authorId e secretul de
+// editare și nu trebuie să ajungă în adrese sau loguri. Fără cele scoase de moderator.
+router.post("/mine", (req, res) => {
+  const { authorId } = req.body || {};
+  if (!isStr(authorId, 100) || !authorId) return res.status(400).json({ error: "Missing authorId" });
+  const rows = db
+    .prepare(
+      `SELECT * FROM annotations WHERE author_id = ? AND removed_at IS NULL
+       ORDER BY created_at DESC LIMIT 500`
+    )
+    .all(authorId);
+  res.json(rows.map(serialize));
+});
+
 // POST /api/annotations  { url, type, data, authorId }
 router.post("/", writeLimiter, (req, res) => {
   const { url, type, data, authorId } = req.body || {};
@@ -201,9 +233,9 @@ router.post("/", writeLimiter, (req, res) => {
   const createdAt = Date.now();
 
   db.prepare(
-    `INSERT INTO annotations (id, url, url_hash, type, data, author_id, votes, reports, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)`
-  ).run(id, url, sha256Hex(url), type, JSON.stringify(data), authorId, createdAt);
+    `INSERT INTO annotations (id, url, url_hash, type, data, author_id, author_hash, votes, reports, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`
+  ).run(id, url, sha256Hex(url), type, JSON.stringify(data), authorId, authorHash(authorId), createdAt);
 
   const row = db.prepare("SELECT * FROM annotations WHERE id = ?").get(id);
   res.status(201).json(serialize(row));

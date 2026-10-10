@@ -31,9 +31,15 @@ nevoie de compilare (necesită Node ≥ 22.5).
 Endpoint-uri disponibile:
 - `GET /api/health` — `{ok: true}`
 - `GET /api/version` — conținutul `version.json` (`{latest, notes}`), pentru beculețul de update
-- `GET /api/annotations?urlHash=<sha256(url)>&minVotes=0` — listă adnotări pentru o pagină,
+- `GET /api/annotations?urlHash=<sha256(url)>[&minVotes=N]` — listă adnotări pentru o pagină,
   identificată prin amprenta SHA-256 (hex) a adresei, nu prin adresa în sine
-  (`?url=` mai merge doar pentru extensiile vechi, ≤ 0.2.3)
+  (`?url=` mai merge doar pentru extensiile vechi, ≤ 0.2.3). Fără `minVotes` le trimite pe
+  toate; extensia face Top 10 pe pagină cu cel mult o adnotare per utilizator (cea mai bună a
+  lui: scor, apoi vechime) și arată pe pagină doar adnotările din top
+- `GET /api/annotations/by-author/:authorHash` — profilul public al unui utilizator: adnotările
+  lui vizibile de pe toate paginile, după voturi (apoi vechime), max. 500
+- `POST /api/annotations/mine` — `{authorId}`: toate adnotările autorului, de pe toate
+  paginile (panoul „Ale mele → Toate”), cele mai noi primele, max. 500
 - `GET /api/annotations/top?limit=10` — cele mai votate adnotări de pe toate paginile
   (min. 1 vot, `limit` max. 50, cache 10s)
 - `GET /api/annotations/stats?urlHash=<sha256(url)>` — numărul de adnotări pe tipuri:
