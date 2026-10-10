@@ -204,6 +204,23 @@
     mark: '<path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M3 22h8"/>',
   };
 
+  // Iconița butonului „Formă” arată forma aleasă (vezi refreshStyleControls).
+  const SHAPE_ICONS = {
+    circle: '<circle cx="12" cy="12" r="8"/>',
+    rectangle: '<rect x="3" y="7" width="18" height="10" rx="1"/>',
+    square: '<rect x="5" y="5" width="14" height="14" rx="1"/>',
+    triangle: '<path d="M12 4l9 16H3z"/>',
+    diamond: '<path d="M12 3l9 9-9 9-9-9z"/>',
+    star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+    arrow: '<path d="M5 19L19 5M10 5h9v9"/>',
+    heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+    hexagon: '<path d="M7 4h10l5 8-5 8H7l-5-8z"/>',
+    cloud: '<path d="M7 18a4 4 0 0 1-.6-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/>',
+    lightning: '<path d="M13 2L5 13h6l-2 9 8-11h-6z"/>',
+    double_arrow: '<path d="M5 19L19 5M14 5h5v5M10 19H5v-5"/>',
+    line: '<path d="M5 19L19 5"/>',
+  };
+
   function icon(name) {
     const span = document.createElement("span");
     span.className = "wa-ico";
@@ -553,6 +570,8 @@
       b.classList.toggle("active", Number(b.dataset.width) === state.strokeWidth)
     );
     els.stylePopover.querySelectorAll(".wa-choice").forEach((b) => b.classList.toggle("active", state[b.dataset.key] === b.dataset.value));
+    const shapeSvg = els.toolbar?.querySelector('.wa-tool[data-tool="shape"] svg');
+    if (shapeSvg && SHAPE_ICONS[state.shapeKind]) shapeSvg.innerHTML = SHAPE_ICONS[state.shapeKind]; // markup static, din SHAPE_ICONS
     // secțiunile care țin de altă unealtă se ascund, ca fereastra să rămână scurtă
     const tool = state.activeTool;
     els.stylePopover.querySelectorAll(".wa-pop-section").forEach((sec) => {
@@ -926,7 +945,12 @@
     // să ajungă la svg, unde sunt de fapt legate handler-ele de desen.
     els.elements.classList.toggle("wa-drawing", clickToPlace);
     refreshStyleControls(); // fereastra de stil arată doar opțiunile uneltei alese
+    // Uneltele cu variante (formă, spray, bulă, font) își deschid singure fereastra de stil,
+    // fără click în plus pe bulina de culoare; la deselectare se închide.
+    if (TOOLS_WITH_OPTIONS.has(state.activeTool)) toggleStylePopover(true);
+    else if (!state.activeTool && !els.stylePopover.hidden) toggleStylePopover(false);
   }
+  const TOOLS_WITH_OPTIONS = new Set(["spray", "shape", "text", "bubble"]);
 
   // ---------- Vote / report / delete control ----------
 
