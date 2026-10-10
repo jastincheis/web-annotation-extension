@@ -1,4 +1,4 @@
 {
-  "latest": "0.2.15",
-  "notes": "Adnotări suprapuse: la hover apare un meniu cu toate straturile (max. 10), cu Like, Dislike și Raportare pentru fiecare."
+  "latest": "0.2.16",
+  "notes": "Hover exact pe desen: vezi like/dislike/raportare pentru ce e sub mouse, golurile nu mai blochează; adnotarea selectată strălucește."
 }
