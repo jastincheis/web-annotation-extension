@@ -623,7 +623,7 @@
 }
 .wa-width i { display: block; border-radius: 99px; background: #eae6ff; }
 .wa-width.active { background: #362e5c; box-shadow: inset 0 0 0 1.5px #7c3aed; }
-.wa-shape-kind {
+.wa-choice {
   padding: 5px 8px;
   margin: 0;
   border: 0;
@@ -633,8 +633,16 @@
   font: 500 11.5px/1 system-ui, sans-serif;
   cursor: pointer;
 }
-.wa-shape-kind:hover { background: #362e5c; }
-.wa-shape-kind.active { background: #7c3aed; color: white; }
+.wa-choice:hover { background: #362e5c; }
+.wa-choice.active { background: #7c3aed; color: white; }
+.wa-pop-section[hidden] { display: none; }
+/* bulele: coloana stângă = coada în stânga, coloana dreaptă = coada în dreapta */
+.wa-pop-bubbles { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, auto); grid-auto-flow: column; gap: 5px; }
+.wa-pop-bubbles .wa-choice:nth-child(n + 4) { text-align: right; }
+.wa-pop-bubbles .wa-choice:nth-child(-n + 3) { text-align: left; }
+/* butoanele de font se scriu chiar în fontul lor */
+.wa-choice.wa-font-impact, .wa-choice.wa-font-comic, .wa-choice.wa-font-marker, .wa-choice.wa-font-typewriter { font-size: 13px; font-weight: 400; }
+.wa-choice.wa-font-hand { font-size: 16px; }
 
 
 /* Control de vot atașat lângă fiecare adnotare — ascuns implicit, apare doar la
@@ -745,11 +753,102 @@
   padding: 8px 12px;
   border-radius: 16px;
   border-bottom-left-radius: 2px; /* sugerează coada bulei */
+  background: var(--wa-c, #7c3aed);
   color: white;
   font-size: 14px;
   font-weight: 600;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
+/* Stiluri de bulă (BUBBLES în content.js). --wa-c = culoarea aleasă.
+   Coada: Vorbire / Gând / Strigăt în stânga-jos, Șoaptă / Narator / Neon în dreapta-jos. */
+.wa-bubble::before, .wa-bubble::after { pointer-events: none; }
+.wa-bubble--speech::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  bottom: -11px;
+  border-right: 12px solid transparent;
+  border-top: 12px solid var(--wa-c, #7c3aed);
+}
+.wa-bubble--thought { border-radius: 999px; padding: 12px 18px; }
+.wa-bubble--thought::before,
+.wa-bubble--thought::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  background: var(--wa-c, #7c3aed);
+  pointer-events: none;
+}
+.wa-bubble--thought::before { width: 12px; height: 12px; left: 10px; bottom: -14px; }
+.wa-bubble--thought::after { width: 7px; height: 7px; left: 2px; bottom: -24px; }
+.wa-bubble--shout {
+  padding: 22px 30px;
+  border-radius: 0;
+  text-transform: uppercase;
+  font-weight: 800;
+  box-shadow: none;
+  padding-bottom: 30px;
+  /* zimțată, cu un vârf lung spre stânga-jos = coada */
+  clip-path: polygon(0% 18%, 14% 22%, 10% 0%, 30% 14%, 40% 0%, 50% 14%, 62% 0%, 70% 16%, 88% 4%, 86% 24%, 100% 22%, 92% 42%, 100% 56%, 88% 64%, 98% 84%, 76% 76%, 70% 92%, 56% 78%, 44% 92%, 34% 78%, 2% 100%, 18% 72%, 0% 74%, 8% 56%, 0% 44%, 10% 34%);
+}
+.wa-bubble--whisper {
+  background: rgba(255, 255, 255, 0.92);
+  color: #1a1a1a;
+  border: 2px dashed var(--wa-c, #7c3aed);
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 2px;
+  font-style: italic;
+  font-weight: 500;
+}
+.wa-bubble--whisper::before,
+.wa-bubble--whisper::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1.5px dashed var(--wa-c, #7c3aed);
+}
+.wa-bubble--whisper::before { width: 12px; height: 12px; right: 10px; bottom: -16px; }
+.wa-bubble--whisper::after { width: 7px; height: 7px; right: 2px; bottom: -26px; }
+.wa-bubble--caption {
+  border-radius: 3px;
+  border: 2px solid rgba(0, 0, 0, 0.6);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
+}
+.wa-bubble--caption::before,
+.wa-bubble--caption::after { content: ""; position: absolute; }
+.wa-bubble--caption::before { right: 12px; bottom: -17px; border-left: 16px solid transparent; border-top: 16px solid rgba(0, 0, 0, 0.6); }
+.wa-bubble--caption::after { right: 14px; bottom: -12px; border-left: 12px solid transparent; border-top: 12px solid var(--wa-c, #7c3aed); }
+.wa-bubble--neon {
+  background: rgba(10, 8, 20, 0.85);
+  color: var(--wa-c, #7c3aed);
+  border: 2px solid var(--wa-c, #7c3aed);
+  box-shadow: 0 0 6px var(--wa-c, #7c3aed), 0 0 16px var(--wa-c, #7c3aed), inset 0 0 6px var(--wa-c, #7c3aed);
+  text-shadow: 0 0 6px var(--wa-c, #7c3aed);
+}
+.wa-bubble--neon::after {
+  content: "";
+  position: absolute;
+  right: 16px;
+  bottom: -8px;
+  width: 13px;
+  height: 13px;
+  background: rgb(10, 8, 20);
+  border-right: 2px solid var(--wa-c, #7c3aed);
+  border-bottom: 2px solid var(--wa-c, #7c3aed);
+  transform: rotate(45deg);
+  box-shadow: 4px 4px 8px -3px var(--wa-c, #7c3aed);
+}
+
+/* Fonturi (FONTS în content.js; fișierele în fonts/, declarate în fonts.css). Cu #wa-root în
+   selector, ca să bată regula generală de font de la începutul fișierului. */
+#wa-root .wa-font-normal, #wa-video-root .wa-font-normal, .wa-font-normal { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+#wa-root .wa-font-impact, #wa-video-root .wa-font-impact, .wa-font-impact { font-family: Impact, "WA Anton", "Arial Narrow Bold", sans-serif; font-weight: 400; letter-spacing: 0.02em; }
+#wa-root .wa-font-comic, #wa-video-root .wa-font-comic, .wa-font-comic { font-family: "WA Bangers", "Comic Sans MS", cursive; font-weight: 400; letter-spacing: 0.04em; }
+#wa-root .wa-font-marker, #wa-video-root .wa-font-marker, .wa-font-marker { font-family: "WA Permanent Marker", "Comic Sans MS", cursive; font-weight: 400; }
+#wa-root .wa-font-hand, #wa-video-root .wa-font-hand, .wa-font-hand { font-family: "WA Caveat", cursive; font-size: 1.3em; }
+#wa-root .wa-font-typewriter, #wa-video-root .wa-font-typewriter, .wa-font-typewriter { font-family: "WA Special Elite", "Courier New", monospace; font-weight: 400; }
+#wa-root .wa-text-box.wa-font-hand, #wa-root .wa-bubble.wa-font-hand, .wa-text-box.wa-font-hand, .wa-bubble.wa-font-hand { font-size: 18px; }
 .wa-bubble[contenteditable="true"] {
   outline: 2px dashed white;
   min-width: 120px;

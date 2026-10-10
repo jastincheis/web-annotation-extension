@@ -10,7 +10,10 @@
     userHash: null, // amprenta publică a lui userId (authorHash din răspunsurile serverului)
     toolbarVisible: false,
     activeTool: null, // 'pen' | 'spray' | 'shape' | 'text' | 'video'
-    shapeKind: "circle", // 'circle' | 'arrow'
+    shapeKind: "circle", // vezi SHAPES
+    font: "normal", // vezi FONTS
+    bubbleKind: "speech", // vezi BUBBLES
+    sprayKind: "classic", // vezi SPRAYS
     color: "#89CFF0", // baby blue
     strokeWidth: 4,
     rankVisible: new Set(), // id-urile din Top 10 al paginii (câte una per utilizator) — vezi refreshRanking
@@ -229,7 +232,45 @@
     ["diamond", "Romb"],
     ["star", "Stea"],
     ["arrow", "Săgeată"],
+    ["heart", "Inimă"],
+    ["hexagon", "Hexagon"],
+    ["cloud", "Nor"],
+    ["lightning", "Fulger"],
+    ["double_arrow", "Săgeată dublă"],
+    ["line", "Linie"],
   ];
+  // Fonturi pentru text și bule. Se aplică prin clasa wa-font-<cheie> (content.css), nu prin
+  // stil inline — cheia vine de la server și e verificată contra listei (vezi sanitizeAnnotation).
+  const FONTS = [
+    ["normal", "Normal"],
+    ["impact", "Impact"],
+    ["comic", "Bangers"],
+    ["marker", "Marker"],
+    ["hand", "De mână"],
+    ["typewriter", "Mașină de scris"],
+  ];
+  // Stiluri de bulă (clasa wa-bubble--<cheie>); „speech” = bula clasică de până acum.
+  // Primele trei au coada în stânga, ultimele trei în dreapta (în meniu: două coloane).
+  const BUBBLES = [
+    ["speech", "◀ Vorbire"],
+    ["thought", "◀ Gând"],
+    ["shout", "◀ Strigăt"],
+    ["whisper", "Șoaptă ▶"],
+    ["caption", "Narator ▶"],
+    ["neon", "Neon ▶"],
+  ];
+  // Felul în care se împrăștie spray-ul (vezi sprayDots). Toate produc tot puncte {cx, cy, r, o},
+  // deci și versiunile vechi ale extensiei le pot desena.
+  const SPRAYS = [
+    ["classic", "Clasic"],
+    ["mist", "Ceață fină"],
+    ["splatter", "Stropi"],
+    ["drips", "Scurgeri"],
+    ["soft", "Nor moale"],
+    ["burst", "Explozie"],
+  ];
+  const FONT_KEYS = new Set(FONTS.map(([k]) => k));
+  const BUBBLE_KEYS = new Set(BUBBLES.map(([k]) => k));
 
   // Dock flotant (varianta A din propunerile de design): o pastilă compactă, sus pe centru,
   // care se poate trage de mâner oriunde și își ține minte locul pe fiecare site. Stă sus
@@ -302,18 +343,24 @@
         el("i", { style: `width:${8 + w * 1.4}px;height:${Math.max(2, w * 0.8)}px` })
       )
     );
-    const shapes = SHAPES.map(([kind, label]) =>
-      el("button", { class: "wa-shape-kind", "data-shape": kind, onclick: () => setStyle({ shapeKind: kind }) }, label)
-    );
+    // Butoane de ales dintr-o listă [cheie, etichetă]; `key` = câmpul din state pe care îl setează.
+    const choices = (list, key, extraClass = () => "") =>
+      list.map(([kind, label]) =>
+        el("button", { class: `wa-choice ${extraClass(kind)}`, "data-key": key, "data-value": kind, onclick: () => setStyle({ [key]: kind }) }, label)
+      );
+    // data-for = uneltele la care se vede secțiunea (fără unealtă activă se văd toate)
+    const section = (label, forTools, row) =>
+      el("div", { class: "wa-pop-section", "data-for": forTools }, el("div", { class: "wa-pop-label" }, label), row);
     const pop = el(
       "div",
       { id: "wa-style-popover", hidden: "true" },
       el("div", { class: "wa-pop-label" }, "Culoare"),
       el("div", { class: "wa-pop-row" }, ...swatches, custom),
-      el("div", { class: "wa-pop-label" }, "Grosime"),
-      el("div", { class: "wa-pop-row" }, ...widths),
-      el("div", { class: "wa-pop-label" }, "Formă"),
-      el("div", { class: "wa-pop-row wa-pop-wrap" }, ...shapes)
+      section("Grosime", "pen spray shape", el("div", { class: "wa-pop-row" }, ...widths)),
+      section("Formă", "shape", el("div", { class: "wa-pop-row wa-pop-wrap" }, ...choices(SHAPES, "shapeKind"))),
+      section("Spray", "spray", el("div", { class: "wa-pop-row wa-pop-wrap" }, ...choices(SPRAYS, "sprayKind"))),
+      section("Bulă — coada în stânga / în dreapta", "bubble", el("div", { class: "wa-pop-bubbles" }, ...choices(BUBBLES, "bubbleKind"))),
+      section("Font", "text bubble", el("div", { class: "wa-pop-row wa-pop-wrap" }, ...choices(FONTS, "font", (k) => `wa-font-${k}`)))
     );
     stopKeysPropagating(pop);
     return pop;
@@ -466,15 +513,31 @@
     Object.assign(state, patch);
     refreshStyleControls();
     chrome.storage.local
-      .set({ [STYLE_KEY]: { color: state.color, strokeWidth: state.strokeWidth, shapeKind: state.shapeKind } })
+      .set({
+        [STYLE_KEY]: {
+          color: state.color,
+          strokeWidth: state.strokeWidth,
+          shapeKind: state.shapeKind,
+          font: state.font,
+          bubbleKind: state.bubbleKind,
+          sprayKind: state.sprayKind,
+        },
+      })
       .catch(() => {});
   }
+
+  const SELECTABLE_TOOLS = new Set(["pen", "spray", "shape", "text", "bubble", "link"]);
 
   async function loadStyle() {
     try {
       const { [STYLE_KEY]: saved } = await chrome.storage.local.get(STYLE_KEY);
       if (saved) Object.assign(state, saved);
     } catch {}
+    // valori salvate de o versiune mai nouă / mai veche, pe care nu le mai cunoaștem
+    if (!SHAPES.some(([k]) => k === state.shapeKind)) state.shapeKind = "circle";
+    if (!FONT_KEYS.has(state.font)) state.font = "normal";
+    if (!BUBBLE_KEYS.has(state.bubbleKind)) state.bubbleKind = "speech";
+    if (!SPRAYS.some(([k]) => k === state.sprayKind)) state.sprayKind = "classic";
     refreshStyleControls();
   }
 
@@ -489,9 +552,12 @@
     els.stylePopover.querySelectorAll(".wa-width").forEach((b) =>
       b.classList.toggle("active", Number(b.dataset.width) === state.strokeWidth)
     );
-    els.stylePopover.querySelectorAll(".wa-shape-kind").forEach((b) =>
-      b.classList.toggle("active", b.dataset.shape === state.shapeKind)
-    );
+    els.stylePopover.querySelectorAll(".wa-choice").forEach((b) => b.classList.toggle("active", state[b.dataset.key] === b.dataset.value));
+    // secțiunile care țin de altă unealtă se ascund, ca fereastra să rămână scurtă
+    const tool = state.activeTool;
+    els.stylePopover.querySelectorAll(".wa-pop-section").forEach((sec) => {
+      sec.hidden = !!tool && SELECTABLE_TOOLS.has(tool) && !sec.dataset.for.split(" ").includes(tool);
+    });
   }
 
   function toggleStylePopover(force) {
@@ -859,6 +925,7 @@
     // și el cât timp desenezi (pen/spray/formă), ar fura click-urile înainte
     // să ajungă la svg, unde sunt de fapt legate handler-ele de desen.
     els.elements.classList.toggle("wa-drawing", clickToPlace);
+    refreshStyleControls(); // fereastra de stil arată doar opțiunile uneltei alese
   }
 
   // ---------- Vote / report / delete control ----------
@@ -2217,6 +2284,57 @@
 
   // ---------- Spray tool ----------
 
+  // Punctele unei „pufăituri” de spray în jurul lui (x, y), după fel (vezi SPRAYS) și grosime.
+  // o = opacitatea fiecărui punct. Coordonatele se rotunjesc la o zecimală (date mai mici).
+  const MAX_SPRAY_DOTS = 6000;
+  function sprayDots(kind, x, y, sw) {
+    const out = [];
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const round = (v) => Math.round(v * 10) / 10;
+    const dot = (cx, cy, r, o) => out.push({ cx: round(cx), cy: round(cy), r: round(Math.max(0.3, r)), o });
+    // punct la distanță aleatoare, mai des aproape de centru (ca un spray real)
+    const around = (spread, r, o) => {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Math.pow(Math.random(), 1.6) * spread;
+      dot(x + Math.cos(ang) * dist, y + Math.sin(ang) * dist, r, o);
+    };
+    switch (kind) {
+      case "mist": // ceață: multe puncte foarte mici, răsfirate
+        for (let i = 0; i < 10; i++) around(sw * 3.5, rnd(0.4, 1.1), 0.55);
+        break;
+      case "splatter": // stropi: câțiva mici + din când în când o pată mare, mai departe
+        for (let i = 0; i < 3; i++) around(sw * 2, rnd(0.6, sw / 3 + 1), 0.85);
+        if (Math.random() < 0.3) around(sw * 6, rnd(sw * 0.5, sw * 1.2), 0.9);
+        break;
+      case "drips": // ca clasicul, plus scurgeri în jos, din când în când
+        for (let i = 0; i < 4; i++) around(sw * 2, rnd(1, sw / 2 + 1), 0.75);
+        if (Math.random() < 0.06) {
+          const dx = rnd(-sw, sw);
+          const len = rnd(sw * 3, sw * 12);
+          const r0 = rnd(sw * 0.25, sw * 0.45) + 0.6;
+          for (let t = 0; t <= len; t += Math.max(1, r0 * 0.7)) dot(x + dx, y + t, r0 * (1 - (t / len) * 0.35), 0.85);
+          dot(x + dx, y + len, r0 * 1.15, 0.85); // picătura de la capăt
+        }
+        break;
+      case "soft": // nor moale: puncte mari, aproape transparente, se adună treptat
+        for (let i = 0; i < 3; i++) around(sw * 2.5, rnd(sw * 0.8, sw * 1.6), 0.1);
+        break;
+      case "burst": // explozie: raze — punctele scad cu cât sunt mai departe de centru
+        for (let i = 0; i < 6; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const f = Math.random();
+          const dist = f * sw * 7;
+          dot(x + Math.cos(ang) * dist, y + Math.sin(ang) * dist, (1 - f) * (sw / 2) + 0.5, 0.8);
+        }
+        break;
+      default: // clasic — ca până acum
+        for (let i = 0; i < 4; i++) {
+          dot(x + (Math.random() - 0.5) * sw * 4, y + (Math.random() - 0.5) * sw * 4, Math.random() * (sw / 2) + 1, 0.7);
+        }
+    }
+    return out;
+  }
+
   // Spray-ul e o sesiune: poți da spray de mai multe ori (ridici mâna de pe mouse,
   // dai iar spray, tot pe aceeași adnotare) — se salvează abia când apeși OK.
   function initSprayTool() {
@@ -2238,13 +2356,11 @@
     }
 
     function addDots(x, y) {
-      for (let i = 0; i < 4; i++) {
-        const jx = x + (Math.random() - 0.5) * state.strokeWidth * 4;
-        const jy = y + (Math.random() - 0.5) * state.strokeWidth * 4;
-        const r = Math.random() * (state.strokeWidth / 2) + 1;
-        dots.push({ cx: jx, cy: jy, r });
-        group.appendChild(svgEl("circle", { cx: jx, cy: jy, r, fill: state.color, "fill-opacity": 0.7 }));
-      }
+      if (dots.length >= MAX_SPRAY_DOTS) return; // limita serverului
+      sprayDots(state.sprayKind, x, y, state.strokeWidth).forEach((d) => {
+        dots.push(d);
+        group.appendChild(svgEl("circle", { cx: d.cx, cy: d.cy, r: d.r, fill: state.color, "fill-opacity": d.o }));
+      });
     }
 
     function showConfirmBar() {
@@ -2277,7 +2393,7 @@
           const ann = await WA_Api.createAnnotation({
             url: pageKey(),
             type: "spray",
-            data: { dots, color: state.color, anchor, origin: sprayOrigin },
+            data: { dots, color: state.color, anchor, origin: sprayOrigin, sprayKind: state.sprayKind },
             authorId: state.userId,
           });
           const control = attachVoteControl(ann, dots[0].cx, dots[0].cy);
@@ -2353,26 +2469,29 @@
 
   // ---------- Shape tool (bubble / circle / arrow) ----------
 
+  // Vârfurile de săgeată: unul la capăt, unul la început (pentru săgeata dublă, întors).
   function ensureArrowMarker() {
-    if (document.getElementById("wa-arrowhead")) return;
+    if (document.getElementById("wa-arrowhead-start")) return;
+    document.getElementById("wa-arrowhead")?.closest("defs")?.remove();
     const defs = svgEl("defs");
-    const marker = svgEl("marker", {
-      id: "wa-arrowhead",
-      markerWidth: "10",
-      markerHeight: "10",
-      refX: "8",
-      refY: "5",
-      orient: "auto",
+    [
+      ["wa-arrowhead", "auto"],
+      ["wa-arrowhead-start", "auto-start-reverse"],
+    ].forEach(([id, orient]) => {
+      const marker = svgEl("marker", { id, markerWidth: "10", markerHeight: "10", refX: "8", refY: "5", orient });
+      marker.appendChild(svgEl("path", { d: "M0,0 L10,5 L0,10 Z", fill: "context-stroke" }));
+      defs.appendChild(marker);
     });
-    marker.appendChild(svgEl("path", { d: "M0,0 L10,5 L0,10 Z", fill: "context-stroke" }));
-    defs.appendChild(marker);
     els.svg.appendChild(defs);
   }
 
   // Toate formele "simple" — un singur contur, fără umplere, ca stilul să fie unitar.
   // Folosit și în applyStyleToElement, ca să știe ce forme au stroke direct pe element
   // (față de vechea variantă "bulă", un <g> cu rect+polygon în interior).
-  const SIMPLE_STROKE_SHAPES = new Set(["circle", "arrow", "rectangle", "square", "triangle", "diamond", "star"]);
+  const SIMPLE_STROKE_SHAPES = new Set([
+    "circle", "arrow", "rectangle", "square", "triangle", "diamond", "star",
+    "heart", "hexagon", "cloud", "lightning", "double_arrow", "line",
+  ]);
 
   function renderShapeGeometry(shape, x1, y1, x2, y2, color, strokeWidth) {
     ensureArrowMarker();
@@ -2434,6 +2553,39 @@
         points.push(`${cx + Math.cos(angle) * (w / 2) * r},${cy + Math.sin(angle) * (h / 2) * r}`);
       }
       return svgEl("polygon", { points: points.join(" "), stroke: color, "stroke-width": strokeWidth, fill: "none" });
+    }
+
+    const stroke = { stroke: color, "stroke-width": strokeWidth, fill: "none", "stroke-linejoin": "round" };
+    const P = (fx, fy) => `${x + w * fx},${y + h * fy}`; // punct în cadrul formei, în fracțiuni
+    if (shape === "heart") {
+      const d =
+        `M ${P(0.5, 0.28)} C ${P(0.5, 0)} ${P(0, 0)} ${P(0, 0.3)} C ${P(0, 0.6)} ${P(0.35, 0.75)} ${P(0.5, 1)} ` +
+        `C ${P(0.65, 0.75)} ${P(1, 0.6)} ${P(1, 0.3)} C ${P(1, 0)} ${P(0.5, 0)} ${P(0.5, 0.28)} Z`;
+      return svgEl("path", { d, ...stroke });
+    }
+    if (shape === "hexagon") {
+      const points = [P(0.25, 0), P(0.75, 0), P(1, 0.5), P(0.75, 1), P(0.25, 1), P(0, 0.5)].join(" ");
+      return svgEl("polygon", { points, ...stroke });
+    }
+    if (shape === "cloud") {
+      const a = (rx, ry, to) => `A ${w * rx} ${h * ry} 0 0 1 ${to}`;
+      const d =
+        `M ${P(0.2, 0.9)} ${a(0.16, 0.2, P(0.12, 0.5))} ${a(0.2, 0.25, P(0.42, 0.18))} ` +
+        `${a(0.2, 0.22, P(0.78, 0.25))} ${a(0.18, 0.25, P(0.85, 0.9))} Z`;
+      return svgEl("path", { d, ...stroke });
+    }
+    if (shape === "lightning") {
+      const points = [P(0.6, 0), P(0.15, 0.55), P(0.45, 0.55), P(0.3, 1), P(0.88, 0.4), P(0.56, 0.4), P(0.75, 0)].join(" ");
+      return svgEl("polygon", { points, ...stroke });
+    }
+    if (shape === "line" || shape === "double_arrow") {
+      const line = svgEl("line", { x1, y1, x2, y2, stroke: color, "stroke-width": strokeWidth, "stroke-linecap": "round" });
+      if (shape === "double_arrow") {
+        line.setAttribute("marker-start", "url(#wa-arrowhead-start)");
+        line.setAttribute("marker-end", "url(#wa-arrowhead)");
+        line.style.stroke = color; // pentru context-stroke pe vârfuri
+      }
+      return line;
     }
 
     // bulă desenată — variantă veche a uneltei Formă, nu mai e selectabilă din meniu,
@@ -2586,8 +2738,9 @@
   // se salvează abia când apeși OK.
   function createEditableTextBox(x, y, clientX, clientY) {
     const anchor = computeAnchor(clientX, clientY);
+    const font = state.font;
     const box = el("div", {
-      class: "wa-text-box",
+      class: `wa-text-box wa-font-${font}`,
       contenteditable: "true",
       style: `left:${x}px; top:${y}px; border-color:${state.color};`,
     });
@@ -2617,7 +2770,7 @@
         const ann = await WA_Api.createAnnotation({
           url: pageKey(),
           type: "text",
-          data: { x, y, text, color: state.color, anchor },
+          data: { x, y, text, color: state.color, anchor, font },
           authorId: state.userId,
         });
         renderTextAnnotation(ann);
@@ -2633,7 +2786,7 @@
     const box = el(
       "div",
       {
-        class: "wa-text-box",
+        class: `wa-text-box wa-font-${ann.data.font || "normal"}`,
         style: `left:${ann.data.x}px; top:${ann.data.y}px; border-color:${ann.data.color}; transform: rotate(${ann.data.rotate || 0}deg) scale(${ann.data.scale || 1});`,
       },
       ann.data.text
@@ -2663,10 +2816,12 @@
   // se salvează abia când apeși OK.
   function createEditableBubble(x, y, clientX, clientY) {
     const anchor = computeAnchor(clientX, clientY);
+    const font = state.font;
+    const kind = state.bubbleKind;
     const bubble = el("div", {
-      class: "wa-bubble",
+      class: `wa-bubble wa-bubble--${kind} wa-font-${font}`,
       contenteditable: "true",
-      style: `left:${x}px; top:${y}px; background:${state.color};`,
+      style: `left:${x}px; top:${y}px; --wa-c:${state.color};`,
     });
     stopKeysPropagating(bubble);
     els.elements.appendChild(bubble);
@@ -2694,7 +2849,7 @@
         const ann = await WA_Api.createAnnotation({
           url: pageKey(),
           type: "bubble",
-          data: { x, y, text, color: state.color, anchor },
+          data: { x, y, text, color: state.color, anchor, font, bubbleKind: kind },
           authorId: state.userId,
         });
         renderBubbleAnnotation(ann);
@@ -2710,8 +2865,8 @@
     const bubble = el(
       "div",
       {
-        class: "wa-bubble",
-        style: `left:${ann.data.x}px; top:${ann.data.y}px; background:${ann.data.color}; transform: rotate(${ann.data.rotate || 0}deg) scale(${ann.data.scale || 1});`,
+        class: `wa-bubble wa-bubble--${ann.data.bubbleKind || "speech"} wa-font-${ann.data.font || "normal"}`,
+        style: `left:${ann.data.x}px; top:${ann.data.y}px; --wa-c:${ann.data.color}; transform: rotate(${ann.data.rotate || 0}deg) scale(${ann.data.scale || 1});`,
       },
       ann.data.text
     );
@@ -3064,7 +3219,15 @@
     if (d.text !== undefined) d.text = String(d.text);
     if (d.label !== undefined) d.label = String(d.label);
     if (d.d !== undefined && !/^[MLQCZmlqcz0-9.,\s+\-eE]*$/.test(String(d.d))) d.d = "";
-    if (Array.isArray(d.dots)) d.dots = d.dots.filter((p) => p && [p.cx, p.cy, p.r].every(Number.isFinite));
+    if (Array.isArray(d.dots)) {
+      d.dots = d.dots.filter((p) => p && [p.cx, p.cy, p.r].every(Number.isFinite));
+      d.dots.forEach((p) => {
+        if (p.o !== undefined && !(Number.isFinite(p.o) && p.o >= 0 && p.o <= 1)) delete p.o;
+      });
+    }
+    // fontul și stilul bulei ajung în numele unei clase — doar valori din listele noastre
+    if (d.font !== undefined && !FONT_KEYS.has(d.font)) delete d.font;
+    if (d.bubbleKind !== undefined && !BUBBLE_KEYS.has(d.bubbleKind)) delete d.bubbleKind;
     return ann;
   }
 
@@ -3097,7 +3260,7 @@
       case "spray": {
         const group = svgEl("g");
         ann.data.dots.forEach((d) =>
-          group.appendChild(svgEl("circle", { cx: d.cx, cy: d.cy, r: d.r, fill: ann.data.color, "fill-opacity": 0.7 }))
+          group.appendChild(svgEl("circle", { cx: d.cx, cy: d.cy, r: d.r, fill: ann.data.color, "fill-opacity": d.o ?? 0.7 }))
         );
         applyStoredOffset(group, ann);
         els.svg.appendChild(group);

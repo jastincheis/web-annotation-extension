@@ -96,8 +96,11 @@ Limite: 120 cereri/minut per IP pe tot API-ul, plus 20/minut pe rutele de scrier
   extensiei) deschide **dock-ul** — bara de unelte de sus. Se mută trăgând de mânerul ⠿
   (își ține minte locul pe fiecare site; dublu-click pe mâner = înapoi la locul implicit).
 - Unelte și scurtături (cât e deschis dock-ul): **V** selectează, **P** creion, **S** spray,
-  **F** formă (cerc, dreptunghi, stea, săgeată...), **B** bulă, **T** text, **L** link,
-  **Esc** închide. Bulina colorată deschide culoarea / grosimea / tipul formei.
+  **F** formă (13: cerc, dreptunghi, stea, inimă, nor, fulger, săgeată dublă...), **B** bulă,
+  **T** text, **L** link, **Esc** închide. Bulina colorată deschide stilul uneltei alese:
+  culoare, grosime, formă, 6 feluri de spray (clasic, ceață, stropi, scurgeri, nor moale,
+  explozie), 6 bule (3 cu coada în stânga, 3 în dreapta) și 6 fonturi pentru text și bule
+  (Impact, Bangers, Marker, de mână, mașină de scris — incluse în `extension/fonts/`).
 - Pe YouTube, Netflix și alte video-uri, adnotările se leagă de video și se pot limita la
   un interval de timp (dublu-click pe adnotare). Merg și în fullscreen, unde se vede și
   dock-ul.

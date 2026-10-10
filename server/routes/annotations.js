@@ -44,7 +44,14 @@ function authorHash(authorId) {
 // poziții în stiluri CSS, coordonate în desene SVG) — o „culoare” ca `red; background:url(...)`
 // ar face browserele lor să acceseze o adresă străină. Acceptăm doar forme cunoscute.
 const TYPES = new Set(["pen", "spray", "shape", "text", "bubble", "link", "video_bubble"]);
-const SHAPES = new Set(["circle", "rectangle", "square", "triangle", "diamond", "star", "arrow"]);
+const SHAPES = new Set([
+  "circle", "rectangle", "square", "triangle", "diamond", "star", "arrow",
+  "heart", "hexagon", "cloud", "lightning", "double_arrow", "line",
+]);
+// Fontul, stilul bulei și felul spray-ului — aceleași liste ca FONTS / BUBBLES / SPRAYS din content.js.
+const FONTS = new Set(["normal", "impact", "comic", "marker", "hand", "typewriter"]);
+const BUBBLE_KINDS = new Set(["speech", "thought", "shout", "whisper", "caption", "neon"]);
+const SPRAY_KINDS = new Set(["classic", "mist", "splatter", "drips", "soft", "burst"]);
 const NUM_FIELDS = ["x", "y", "x1", "y1", "x2", "y2", "dx", "dy", "rotate", "scale", "strokeWidth", "xPct", "yPct", "timestamp", "duration"];
 const MAX_DATA_CHARS = 300_000;
 
@@ -61,10 +68,14 @@ function validateAnnotation(type, data) {
   if (data.label !== undefined && !isStr(data.label, 300)) return "Etichetă prea lungă";
   if (data.url !== undefined && !isStr(data.url, 2000)) return "Link prea lung";
   if (data.shape !== undefined && !SHAPES.has(data.shape)) return "Formă necunoscută";
+  if (data.font !== undefined && !FONTS.has(data.font)) return "Font necunoscut";
+  if (data.bubbleKind !== undefined && !BUBBLE_KINDS.has(data.bubbleKind)) return "Stil de bulă necunoscut";
+  if (data.sprayKind !== undefined && !SPRAY_KINDS.has(data.sprayKind)) return "Spray necunoscut";
   if (data.d !== undefined && !(isStr(data.d, 250_000) && /^[MLQCZmlqcz0-9.,\s+\-eE]*$/.test(data.d))) return "Desen invalid";
   if (data.dots !== undefined) {
     if (!Array.isArray(data.dots) || data.dots.length > 6000) return "Spray invalid";
     if (!data.dots.every((p) => p && isNum(p.cx) && isNum(p.cy) && isNum(p.r))) return "Spray invalid";
+    if (!data.dots.every((p) => p.o === undefined || (isNum(p.o) && p.o >= 0 && p.o <= 1))) return "Spray invalid";
   }
   if (data.origin !== undefined && !(data.origin && isNum(data.origin.x) && isNum(data.origin.y))) return "Origine invalidă";
   if (data.videoRange !== undefined && data.videoRange !== null) {
