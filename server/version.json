@@ -1,4 +1,4 @@
 {
-  "latest": "0.3.0",
-  "notes": "Chat pe pagină: o fereastră pe care o muți și o mărești, ca să vorbești cu cei de pe aceeași pagină. Citește oricine, scriu cei cu cont; mesajele dispar după 24 de ore."
+  "latest": "0.3.1",
+  "notes": "Bara de sus: uneltele și culoarea se aleg doar trecând cu mouse-ul peste ele, cu opțiunile deschise direct."
 }

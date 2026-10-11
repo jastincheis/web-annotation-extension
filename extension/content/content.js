@@ -234,6 +234,7 @@
   }
 
   // Unealtă → [etichetă, tastă]. Tastele merg doar cât dock-ul e deschis (vezi key-guard.js).
+  const HOVER_PICK_MS = 120;
   const TOOLS = [
     ["select", "Selectează / navighează normal", "V"],
     ["pen", "Creion", "P"],
@@ -301,14 +302,40 @@
       el("button", { class: `wa-dock-btn ${cls}`, title, "aria-label": title, onclick, ...extra }, icon(iconName));
 
     const grip = el("span", { class: "wa-dock-grip", title: "Trage ca să muți bara" }, icon("grip"));
-    const tools = TOOLS.map(([tool, label, key]) =>
-      btn("wa-tool", tool, `${label} (${key})`, () => setActiveTool(tool), { "data-tool": tool })
-    );
+    // Uneltele se aleg și doar trecând cu mouse-ul peste ele (ca un click), fără tooltip.
+    // O mică pauză ca să nu schimbi unealta doar traversând bara spre alt buton.
+    const pickTool = (tool) => {
+      if ((tool === "select" ? null : tool) !== state.activeTool) setActiveTool(tool);
+      else if (TOOLS_WITH_OPTIONS.has(tool)) toggleStylePopover(true);
+    };
+    const hoverPick = (tool) => {
+      let timer = 0;
+      return {
+        onpointerenter: (e) => {
+          if (e.pointerType !== "mouse") return;
+          timer = setTimeout(() => {
+            if (tool === "link" && linkLocked()) return; // la click arată mesajul „Fă-ți cont”
+            pickTool(tool);
+          }, HOVER_PICK_MS);
+        },
+        onpointerleave: () => clearTimeout(timer),
+      };
+    };
+    const tools = TOOLS.map(([tool, label, key]) => {
+      const b = btn("wa-tool", tool, `${label} (${key})`, () => (tool === "link" && linkLocked() ? setActiveTool(tool) : pickTool(tool)), { "data-tool": tool, ...hoverPick(tool) });
+      b.removeAttribute("title");
+      return b;
+    });
 
     els.colorDot = el("span", { class: "wa-color-dot" });
     els.styleBtn = el(
       "button",
-      { class: "wa-dock-btn wa-style-btn", title: "Culoare, grosime, formă", "aria-label": "Culoare, grosime, formă", onclick: () => toggleStylePopover() },
+      {
+        class: "wa-dock-btn wa-style-btn",
+        "aria-label": "Culoare, grosime, formă",
+        onclick: () => toggleStylePopover(true), // se închide cu click în afară sau Esc
+        onpointerenter: (e) => e.pointerType === "mouse" && toggleStylePopover(true),
+      },
       els.colorDot
     );
     els.mineBtn = btn("wa-mine-btn", "pin", "Adnotările mele pe pagina asta", () => setMinePanelOpen(!state.myPanelOpen));
