@@ -21,5 +21,6 @@
     }
     if (e.data.type === "seek" && Number.isFinite(e.data.seconds)) player.seek(Math.round(e.data.seconds * 1000));
     if (e.data.type === "pause") player.pause();
+    if (e.data.type === "play") player.play();
   });
 })();

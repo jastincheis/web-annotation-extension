@@ -1,4 +1,4 @@
 {
-  "latest": "0.3.1",
-  "notes": "Bara de sus: uneltele și culoarea se aleg doar trecând cu mouse-ul peste ele, cu opțiunile deschise direct."
+  "latest": "0.3.2",
+  "notes": "Vizionare împreună: în chat vezi la ce minut e fiecare în video și apeși „Sync” ca să vă uitați din același punct. Dacă dai tu pauză sau derulezi, ieși din sincronizare — apeși din nou Sync ca să revii."
 }

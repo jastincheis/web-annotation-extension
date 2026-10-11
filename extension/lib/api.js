@@ -43,12 +43,13 @@
   }
 
   // ---- Chat pe pagină (camera = amprenta adresei) ----
-  async function chatPoll(url, authorId, since) {
+  // extra: { video: {t, paused} | null, follows: authorHash | null } — vizionare împreună
+  async function chatPoll(url, authorId, since, extra = {}) {
     const b = await base();
     const res = await fetch(`${b}/api/chat/poll`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urlHash: await pageHash(url), authorId, since }),
+      body: JSON.stringify({ urlHash: await pageHash(url), authorId, since, video: extra.video || null, follows: extra.follows || null }),
     });
     if (!res.ok) throw await apiError(res, "Chatul nu răspunde");
     return res.json();

@@ -1253,7 +1253,7 @@
     saveErrorToast.classList.toggle("wa-info", info);
     saveErrorToast.classList.toggle("wa-ok", ok);
     saveErrorToast.classList.add("wa-visible");
-    saveErrorTimer = setTimeout(() => saveErrorToast?.classList.remove("wa-visible"), 5000);
+    saveErrorTimer = setTimeout(() => saveErrorToast?.classList.remove("wa-visible"), Math.max(5000, message.length * 70)); // mesajele lungi stau mai mult
   }
 
   // Funcție doar cu cont: mesajul + butonul „Fă-ți cont”, care deschide „Ale mele” (acolo
@@ -3255,6 +3255,18 @@
     video?.pause();
   }
 
+  function playVideo(video) {
+    if (IS_NETFLIX) {
+      window.postMessage({ source: "adormis", type: "play" }, location.origin);
+      return;
+    }
+    // AbortError = play întrerupt de un salt/încărcare (normal după seek) — runda următoare reîncearcă.
+    // Doar NotAllowedError înseamnă că browserul blochează pornirea fără un click pe pagină.
+    video?.play()?.catch((e) => {
+      if (e?.name === "NotAllowedError") showSaveError("Browserul n-a lăsat video-ul să pornească singur — apasă tu play.", { info: true });
+    });
+  }
+
   // Video-ul „principal”: cel din fullscreen, altfel cel mai mare vizibil în fereastră.
   // Pe X (și alte feed-uri) sunt multe <video> — primul din DOM e des unul din alt
   // tweet, ascuns sau derulat afară, și atunci intervalul de timp nu mai apărea.
@@ -4372,11 +4384,17 @@
   // cât e deschis chatul. Mesajele se afișează ca text simplu (fără HTML, fără linkuri).
   const CHAT_BOX_KEY = "wa_chat_box"; // { [hostname]: { x, y, w, h } }
   const CHAT_POLL_MS = 4000;
-  const chat = { open: false, since: 0, timer: null, box: null, ids: new Set(), canWrite: false, blocked: false, busy: false };
+  const SYNC_POLL_MS = 2000; // cât urmărești pe cineva sau te urmărește cineva
+  const chat = {
+    open: false, since: 0, timer: null, box: null, ids: new Set(), canWrite: false, blocked: false, busy: false,
+    // vizionare împreună
+    here: [], follow: null, followName: "", left: null, missing: 0, followers: 0, offset: 0, ignoreUntil: 0, lastGesture: 0,
+  };
 
   function buildChat() {
     els.chatHere = el("span", { class: "wa-chat-here", title: "Câți au chatul deschis pe pagina asta acum" });
     els.chatList = el("div", { class: "wa-chat-list" });
+    els.chatPeople = el("div", { class: "wa-chat-people", hidden: "true" });
     els.chatFoot = el("div", { class: "wa-chat-foot" });
     const head = el(
       "div",
@@ -4385,7 +4403,7 @@
       els.chatHere,
       el("button", { class: "wa-chat-close", title: "Închide chatul", onclick: () => setChatOpen(false) }, "✕")
     );
-    els.chat = el("div", { id: "wa-chat", hidden: "true" }, head, els.chatList, els.chatFoot);
+    els.chat = el("div", { id: "wa-chat", hidden: "true" }, head, els.chatPeople, els.chatList, els.chatFoot);
     wireChatDragging(head);
     // mărimea schimbată din colț se salvează (debounce, ca să nu scriem la fiecare pixel)
     new ResizeObserver(
@@ -4463,23 +4481,27 @@
     els.chat.hidden = !open;
     els.chatBtn?.classList.toggle("active", open);
     clearInterval(chat.timer);
-    if (!open) return;
+    if (!open) return stopFollow(); // minutul se arată doar cât ai chatul deschis
     if (els.chat.parentNode !== uiHost()) uiHost().appendChild(els.chat);
     positionChat();
     renderChatFoot();
     pollChat();
     // În față: la 4 s. În fundal: o dată la ~20 s (nu deloc — pe unele sisteme, ex. Hyprland,
-    // Chromium raportează pagina „hidden” deși e pe ecran și are focus).
+    // Chromium raportează pagina „hidden” deși e pe ecran și are focus). Cât ești sincronizat cu
+    // cineva (sau te urmărește cineva): la 2 s, oricum, ca video-urile să nu se îndepărteze.
     let tick = 0;
     chat.timer = setInterval(() => {
       tick++;
-      if (document.visibilityState === "visible" || document.hasFocus() || tick % 5 === 0) pollChat();
-    }, CHAT_POLL_MS);
+      if (chat.follow || chat.followers) return pollChat();
+      const visible = document.visibilityState === "visible" || document.hasFocus();
+      if (tick % 2 === 0 && (visible || tick % 10 === 0)) pollChat();
+    }, SYNC_POLL_MS);
   }
 
   window.addEventListener("resize", () => chat.open && positionChat());
 
   function resetChat() {
+    stopFollow(); // alt video = altă cameră
     chat.since = 0;
     chat.ids.clear();
     if (els.chatList) els.chatList.textContent = "";
@@ -4490,7 +4512,10 @@
     if (chat.busy) return;
     chat.busy = true;
     try {
-      const r = await WA_Api.chatPoll(pageKey(), state.userId, chat.since);
+      const sent = Date.now();
+      const r = await WA_Api.chatPoll(pageKey(), state.userId, chat.since, { video: myVideoState(), follows: chat.follow });
+      // ceasul serverului față de al nostru (jumătate din drumul dus-întors ≈ întârzierea)
+      if (Number.isFinite(r.now)) chat.offset = r.now - (sent + Date.now()) / 2;
       chat.canWrite = r.canWrite;
       chat.blocked = r.blocked;
       const alive = new Set(r.alive);
@@ -4516,11 +4541,176 @@
       els.chatHere.textContent = `👥 ${r.here.length}`;
       els.chatHere.title = r.here.length ? `Acum pe pagină: ${names.join(", ") || "—"}${r.here.length > names.length ? ` + ${r.here.length - names.length} fără nume` : ""}` : "";
       renderChatFoot();
+      chat.here = r.here;
+      r.here.forEach((h) => h.hash !== state.userHash && h.name && state.names.set(h.hash, h.name));
+      chat.followers = r.here.find((h) => h.hash === state.userHash)?.followers || 0;
+      applySync();
+      renderPeople();
     } catch (err) {
       console.warn("[Adormis] Chat:", err);
     } finally {
       chat.busy = false;
     }
+  }
+
+  // ---------- Vizionare împreună ----------
+  // Cât ai chatul deschis, ceilalți văd la ce minut ești în video-ul paginii. Oricine poate
+  // apăsa „Sync” la altcineva: video-ul lui sare la minutul acela și apoi îi urmează play,
+  // pauza și derularea (cel urmărit e 👑). Dacă derulezi sau dai pauză tu, ieși din sincronizare.
+  // Totul trece prin interogarea chatului (la 2 s), deci decalajul e de ~1–2 secunde.
+
+  // Video-ul care se sincronizează: cel principal, dacă nu e live și nu rulează o reclamă.
+  function syncVideo() {
+    const v = getMainVideo();
+    if (!v || !Number.isFinite(v.duration) || v.duration <= 0 || isLiveVideo(v)) return null;
+    return v;
+  }
+  const inAd = (v) => !!v?.closest(".html5-video-player")?.classList.contains("ad-showing");
+
+  function myVideoState() {
+    const v = syncVideo();
+    if (!v || inAd(v)) return null;
+    return { t: Math.round(v.currentTime * 100) / 100, paused: v.paused };
+  }
+
+  // Unde e acum video-ul cuiva: minutul raportat + cât a trecut de atunci (dacă nu e pe pauză).
+  function videoNow(h) {
+    if (!h?.video) return null;
+    const elapsed = h.video.paused ? 0 : Math.max(0, (Date.now() + chat.offset - h.video.at) / 1000);
+    return h.video.t + elapsed;
+  }
+
+  function startFollow(h) {
+    chat.follow = h.hash;
+    chat.followName = authorLabel(h.hash);
+    chat.left = null;
+    chat.missing = 0;
+    showSaveError(`Te uiți împreună cu ${chat.followName}. Dacă dai tu pauză (Space) sau derulezi, ieși din sincronizare — apeși din nou Sync ca să revii.`, { ok: true });
+    applySync();
+    renderPeople();
+    pollChat();
+  }
+
+  // byMe: ai ieșit tu (pauză/derulare) — ținem minte la cine, ca să-ți arătăm unde e Sync
+  function stopFollow(message, byMe = false) {
+    if (!chat.follow) return;
+    chat.left = byMe ? chat.follow : null;
+    chat.follow = null;
+    if (message) showSaveError(message, { info: true });
+    renderPeople();
+  }
+
+  function applySync() {
+    if (!chat.follow) return;
+    const m = chat.here.find((h) => h.hash === chat.follow);
+    // „aici” ține 30 s pe server; dacă n-a mai trimis minutul de 15 s, l-a închis/a plecat
+    // (15 s + 3 runde > cele ~20 s la care întreabă un tab din fundal care încă nu știe că e urmărit)
+    const stale = m?.video && Date.now() + chat.offset - m.video.at > 15000;
+    if (!m || stale) {
+      // a închis chatul sau a plecat — mai așteptăm 3 interogări, poate doar a reîncărcat
+      if (++chat.missing >= 3) stopFollow(`${chat.followName} nu mai e pe pagină — sincronizarea s-a oprit.`);
+      return;
+    }
+    chat.missing = 0;
+    const v = syncVideo();
+    if (!m.video || !v || inAd(v)) return; // el/tu la reclamă sau fără video — așteptăm
+    const target = Math.min(videoNow(m), v.duration - 0.5);
+    const drift = Math.abs(v.currentTime - target);
+    const act = (fn) => {
+      chat.ignoreUntil = Date.now() + 2500; // evenimentele video declanșate de noi nu te scot din sync
+      fn();
+    };
+    if (m.video.paused) {
+      if (!v.paused) act(() => pauseVideo(v));
+      if (drift > 0.7) act(() => seekVideo(v, target));
+    } else {
+      if (drift > 1.5) act(() => seekVideo(v, target));
+      if (v.paused) act(() => playVideo(v));
+    }
+  }
+
+  // Ce faci TU cu video-ul (tastă sau click pe pagină, nu în fereastra noastră): te scoate din
+  // sincronizare; dacă te urmărește cineva, trimitem schimbarea imediat, nu la următoarea rundă.
+  ["pointerdown", "keydown"].forEach((type) =>
+    document.addEventListener(
+      type,
+      (e) => {
+        if (!e.isTrusted) return;
+        // click-urile în ferestrele noastre și scrisul în câmpuri nu sunt comenzi pentru video
+        if (type === "pointerdown" ? e.target?.closest?.("#wa-chat, #wa-toolbar, #wa-root") : e.target?.closest?.("input, textarea, select, [contenteditable]")) return;
+        chat.lastGesture = Date.now();
+      },
+      true
+    )
+  );
+  const pushMyVideo = debounce(() => chat.open && pollChat(), 300);
+  ["play", "pause", "seeked"].forEach((type) =>
+    document.addEventListener(
+      type,
+      (e) => {
+        if (!chat.open || e.target !== syncVideo() || inAd(e.target)) return;
+        let mine = Date.now() > chat.ignoreUntil && Date.now() - chat.lastGesture < 1500;
+        // play/pauză care te aduce în aceeași stare cu el (ex. ai apăsat tu play când browserul
+        // n-a lăsat pornirea automată) nu te scoate din sincronizare
+        const m = chat.follow && chat.here.find((h) => h.hash === chat.follow);
+        if (m?.video && e.type !== "seeked" && m.video.paused === (e.type === "pause")) mine = false;
+        if (chat.follow && mine) {
+          stopFollow(`Ai ieșit din sincronizarea cu ${chat.followName} (ai dat pauză sau ai derulat). Ca să te uiți iar împreună, apasă din nou Sync în chat, în dreptul numelui.`, true);
+        }
+        if (chat.followers) pushMyVideo();
+      },
+      true
+    )
+  );
+
+  function renderPeople() {
+    const box = els.chatPeople;
+    if (!box) return;
+    const mine = syncVideo();
+    const people = chat.here.filter((h) => h.video || h.hash === state.userHash);
+    box.hidden = !mine && !people.some((h) => h.video);
+    if (box.hidden) return;
+    const keep = new Set();
+    if (chat.left && !people.some((h) => h.hash === chat.left && h.video)) chat.left = null; // a plecat
+    people.forEach((h) => {
+      keep.add(h.hash);
+      let row = box.querySelector(`[data-hash="${h.hash}"]`);
+      if (!row) {
+        row = el("div", { class: "wa-chat-person", "data-hash": h.hash },
+          el("span", { class: "wa-person-name" }),
+          el("span", { class: "wa-person-time" }),
+          el("span", { class: "wa-person-crown" }),
+          el("button", { class: "wa-person-sync" })
+        );
+        box.appendChild(row);
+      }
+      const me = h.hash === state.userHash;
+      const following = chat.follow === h.hash;
+      row.classList.toggle("wa-following", following);
+      row.classList.toggle("wa-left-sync", chat.left === h.hash);
+      row.querySelector(".wa-person-name").textContent = authorLabel(h.hash);
+      const t = videoNow(h);
+      row.querySelector(".wa-person-time").textContent = t == null ? "—" : `${h.video.paused ? "⏸" : "▶"} ${formatTime(t)}`;
+      const crown = row.querySelector(".wa-person-crown");
+      crown.textContent = h.followers ? `👑 ${h.followers}` : "";
+      crown.title = h.followers ? `${h.followers} se uită sincronizat${me ? " după tine" : ""}` : "";
+      const b = row.querySelector(".wa-person-sync");
+      b.hidden = me;
+      b.textContent = following ? "Oprește" : "Sync";
+      b.disabled = !following && (!h.video || !mine);
+      b.title = following ? "Oprește sincronizarea" : b.disabled ? "Nu e niciun video de sincronizat" : "Sari la același minut și uitați-vă împreună";
+      b.onclick = () => {
+        b.blur(); // tastele (Space, K, săgeți) să ajungă iar la player, nu la buton
+        following ? stopFollow() : startFollow(h);
+      };
+    });
+    box.querySelectorAll(".wa-chat-person").forEach((row) => !keep.has(row.dataset.hash) && row.remove());
+    let hint = box.querySelector(".wa-sync-hint");
+    if (chat.left) {
+      if (!hint) hint = el("div", { class: "wa-sync-hint" });
+      hint.textContent = `Ai ieșit din sincronizare cu ${authorLabel(chat.left)} — apasă Sync ca să revii.`;
+      box.appendChild(hint); // mereu ultimul, sub rânduri
+    } else hint?.remove();
   }
 
   function chatTime(t) {
@@ -4706,7 +4896,7 @@
         ),
         item("Linkuri:", "linkurile pe care le adaugi sunt verificate la URLhaus (abuse.ch) ca să nu fie periculoase."),
         item("Voturi și raportări:", "se păstrează împreună cu o amprentă a adresei IP (nu IP-ul), ca o conexiune să nu poată umfla voturile sau raportările cu identități inventate."),
-        item("Chat:", "dacă deschizi chatul, mesajele tale apar celor de pe aceeași pagină și se șterg după 24 de ore; cât e deschis, ceilalți văd că ești acolo. Scriu doar cei cu cont."),
+        item("Chat:", "dacă deschizi chatul, mesajele tale apar celor de pe aceeași pagină și se șterg după 24 de ore; cât e deschis, ceilalți văd că ești acolo și la ce minut ești în video-ul paginii (ca să vă puteți sincroniza). Scriu doar cei cu cont."),
         item("Nume (opțional):", "poți apărea cu un nume ales de tine, public și unic; altfel apari ca „Utilizator” urmat de 4 caractere."),
         item("Excepții:", "pe paginile locale sau interne (localhost, adrese IP) extensia nu pornește deloc.")
       ),

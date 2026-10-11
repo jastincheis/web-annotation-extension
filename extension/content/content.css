@@ -1294,3 +1294,20 @@
   flex: 1; min-width: 0; background: #131120; color: #eae6ff; border: 1px solid #3d3560; border-radius: 8px; padding: 6px 8px; font: inherit;
 }
 #wa-chat .wa-chat-input input:focus { outline: none; border-color: #7c3aed; }
+
+/* Vizionare împreună: cine e pe pagină și la ce minut (în chat, deasupra mesajelor) */
+#wa-chat .wa-chat-people { border-bottom: 1px solid #3d3560; padding: 6px 10px; display: flex; flex-direction: column; gap: 4px; max-height: 112px; overflow-y: auto; }
+#wa-chat .wa-chat-people[hidden] { display: none; }
+#wa-chat .wa-chat-person { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
+#wa-chat .wa-chat-person.wa-following { background: #3b2a6b; }
+#wa-chat .wa-person-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c4b5fd; font-weight: 600; }
+#wa-chat .wa-person-time { font-variant-numeric: tabular-nums; color: #eae6ff; }
+#wa-chat .wa-person-crown { font-size: 11px; color: #facc15; }
+#wa-chat .wa-person-sync { background: #262238; border: 1px solid #3d3560; color: #eae6ff; border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+#wa-chat .wa-person-sync:hover:not(:disabled) { border-color: #7c3aed; }
+#wa-chat .wa-person-sync:disabled { opacity: 0.4; cursor: default; }
+#wa-chat .wa-person-sync[hidden] { display: none; }
+#wa-chat .wa-following .wa-person-sync { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+#wa-chat .wa-sync-hint { font-size: 11px; color: #facc15; padding: 2px 4px; }
+#wa-chat .wa-left-sync .wa-person-sync { border-color: #facc15; color: #facc15; animation: wa-sync-pulse 1.2s ease-in-out infinite; }
+@keyframes wa-sync-pulse { 50% { box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.35); } }
