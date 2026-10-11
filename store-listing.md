@@ -23,9 +23,10 @@ CE POȚI FACE
 • Votează (👍👎) adnotările altora și raportează conținut nepotrivit
 • Top 10 pe fiecare pagină (cel mult o adnotare per utilizator) și Top global
 • Profil public: numele tău unic și toate adnotările tale, de pe toate paginile
+• Chat pe pagină: o fereastră pe care o muți și o mărești, ca să vorbești cu cei care sunt pe aceeași pagină sau același video (mesajele dispar după 24 de ore)
 
 CONT
-Poți folosi Adormis și fără cont: vezi tot, votezi, raportezi și faci până la 3 adnotări pe zi (fără linkuri). Cu un cont gratuit — doar un nume și o parolă, fără email — ai totul, fără limită, și ești același utilizator pe orice calculator.
+Poți folosi Adormis și fără cont: vezi tot, citești chatul, votezi, raportezi și faci până la 3 adnotări pe zi (fără linkuri). Cu un cont gratuit — doar un nume și o parolă, fără email — ai totul, inclusiv scrisul în chat, fără limită, și ești același utilizator pe orice calculator.
 
 CUM FUNCȚIONEAZĂ
 Adnotările sunt publice: oricine are extensia instalată le vede pe aceeași pagină și în profilul public al autorului. Doar autorul unei adnotări o poate muta, edita sau șterge. Conținutul raportat e verificat de un moderator.

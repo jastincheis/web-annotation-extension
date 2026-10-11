@@ -42,6 +42,50 @@
     return err;
   }
 
+  // ---- Chat pe pagină (camera = amprenta adresei) ----
+  async function chatPoll(url, authorId, since) {
+    const b = await base();
+    const res = await fetch(`${b}/api/chat/poll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urlHash: await pageHash(url), authorId, since }),
+    });
+    if (!res.ok) throw await apiError(res, "Chatul nu răspunde");
+    return res.json();
+  }
+
+  async function chatSend(url, authorId, text) {
+    const b = await base();
+    const res = await fetch(`${b}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urlHash: await pageHash(url), authorId, text }),
+    });
+    if (!res.ok) throw await apiError(res, "Mesajul nu a plecat");
+    return res.json();
+  }
+
+  async function chatDelete(id, authorId) {
+    const b = await base();
+    const res = await fetch(`${b}/api/chat/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authorId }),
+    });
+    if (!res.ok) throw await apiError(res, "Nu am putut șterge mesajul");
+  }
+
+  async function chatReport(id, reporterId, reason) {
+    const b = await base();
+    const res = await fetch(`${b}/api/chat/${encodeURIComponent(id)}/report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reporterId, reason }),
+    });
+    if (!res.ok) throw await apiError(res, "Raportarea nu a mers");
+    return res.json();
+  }
+
   async function createAnnotation({ url, type, data, authorId }) {
     const b = await base();
     const res = await fetch(`${b}/api/annotations`, {
@@ -190,6 +234,10 @@
     getStats,
     createAnnotation,
     updateAnnotation,
+    chatPoll,
+    chatSend,
+    chatDelete,
+    chatReport,
     vote,
     listMine,
     listByAuthor,

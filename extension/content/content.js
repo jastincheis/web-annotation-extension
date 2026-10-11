@@ -203,6 +203,7 @@
     trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8"/>',
     pin: '<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    chat: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
     grip: '<path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01"/>',
     mark: '<path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M3 22h8"/>',
   };
@@ -312,6 +313,7 @@
     );
     els.mineBtn = btn("wa-mine-btn", "pin", "Adnotările mele pe pagina asta", () => setMinePanelOpen(!state.myPanelOpen));
     els.topBtn = btn("wa-top-btn", "trophy", "Arată / ascunde Topul", () => toggleLeaderboard());
+    els.chatBtn = btn("wa-chat-btn", "chat", "Chat cu cei de pe pagina asta", () => setChatOpen(!chat.open));
     const closeBtn = btn("wa-close", "close", "Închide bara (Esc)", () => toggleToolbar(false));
     // Bulina de versiune: verde = la zi, portocaliu = există una nouă (click = detalii).
     els.versionBtn = el("button", { class: "wa-dock-btn wa-version", onclick: showVersionInfo }, el("span", { class: "wa-version-dot" }));
@@ -333,6 +335,7 @@
       el("span", { class: "wa-dock-sep" }),
       els.mineBtn,
       els.topBtn,
+      els.chatBtn,
       els.versionBtn,
       closeBtn
     );
@@ -2128,7 +2131,7 @@
   // fullscreen-ul — locul lor nu se vede oricum. Cele legate de video sunt deja afișate prin
   // stratul-geamăn (enterVideoFullscreen); aici rămân doar cele noi, desenate în fullscreen.
   let fullscreenUiActive = false;
-  const FS_UI = () => [els.topbar, els.toolbar, els.stylePopover, els.statsPopover, els.minePanel, els.leaderboardPanel];
+  const FS_UI = () => [els.topbar, els.toolbar, els.stylePopover, els.statsPopover, els.minePanel, els.leaderboardPanel, els.chat].filter(Boolean);
 
   function moveUiIntoFullscreen() {
     const fsEl = document.fullscreenElement;
@@ -3507,6 +3510,7 @@
       state.freeLeft = me.freeLeft ?? null;
       state.meLoaded = true;
       refreshLocks();
+      if (chat.open) renderChatFoot();
     } catch {}
     if (state.myPanelOpen) renderMineHeader();
   }
@@ -3767,6 +3771,7 @@
         await WA_Api.setPassword(state.userId, pass.value);
         state.hasPassword = true;
         refreshLocks();
+        if (chat.open) pollChat();
         renderMineHeader();
         showSaveError(`Cont creat: intră de pe alt calculator cu „${state.myName}” și parola.`, { ok: true });
       } catch (err) {
@@ -4332,6 +4337,274 @@
     }, 700);
   }
 
+
+  // ---------- Chat pe pagină ----------
+  // Fereastră plutitoare: o muți trăgând de antet, o mărești din colțul din dreapta-jos; locul și
+  // mărimea se țin minte pe fiecare site. Camera = pagina (după amprenta adresei). Toți citesc;
+  // scriu doar cei cu cont. Serverul e întrebat de mesaje noi la 4 s (în fundal la ~20 s), doar
+  // cât e deschis chatul. Mesajele se afișează ca text simplu (fără HTML, fără linkuri).
+  const CHAT_BOX_KEY = "wa_chat_box"; // { [hostname]: { x, y, w, h } }
+  const CHAT_POLL_MS = 4000;
+  const chat = { open: false, since: 0, timer: null, box: null, ids: new Set(), canWrite: false, blocked: false, busy: false };
+
+  function buildChat() {
+    els.chatHere = el("span", { class: "wa-chat-here", title: "Câți au chatul deschis pe pagina asta acum" });
+    els.chatList = el("div", { class: "wa-chat-list" });
+    els.chatFoot = el("div", { class: "wa-chat-foot" });
+    const head = el(
+      "div",
+      { class: "wa-chat-head", title: "Trage ca să muți chatul" },
+      el("span", { class: "wa-chat-title" }, "💬 Chat pe pagina asta"),
+      els.chatHere,
+      el("button", { class: "wa-chat-close", title: "Închide chatul", onclick: () => setChatOpen(false) }, "✕")
+    );
+    els.chat = el("div", { id: "wa-chat", hidden: "true" }, head, els.chatList, els.chatFoot);
+    wireChatDragging(head);
+    // mărimea schimbată din colț se salvează (debounce, ca să nu scriem la fiecare pixel)
+    new ResizeObserver(
+      debounce(() => {
+        if (!chat.open) return;
+        const r = els.chat.getBoundingClientRect();
+        chat.box = { ...(chat.box || {}), x: r.left, y: r.top, w: Math.round(r.width), h: Math.round(r.height) };
+        saveChatBox();
+      }, 400)
+    ).observe(els.chat);
+    uiHost().appendChild(els.chat);
+  }
+
+  async function loadChatBox() {
+    try {
+      const { [CHAT_BOX_KEY]: all } = await chrome.storage.local.get(CHAT_BOX_KEY);
+      chat.box = all?.[location.hostname] || null;
+    } catch {
+      chat.box = null;
+    }
+  }
+
+  async function saveChatBox() {
+    try {
+      const { [CHAT_BOX_KEY]: all = {} } = await chrome.storage.local.get(CHAT_BOX_KEY);
+      if (chat.box) all[location.hostname] = chat.box;
+      await chrome.storage.local.set({ [CHAT_BOX_KEY]: all });
+    } catch {}
+  }
+
+  function positionChat() {
+    const c = els.chat;
+    const w = Math.min(Math.max(chat.box?.w || 340, 240), window.innerWidth - 8);
+    const h = Math.min(Math.max(chat.box?.h || 420, 200), window.innerHeight - 8);
+    c.style.width = w + "px";
+    c.style.height = h + "px";
+    const x = chat.box?.x ?? window.innerWidth - w - 24;
+    const y = chat.box?.y ?? window.innerHeight - h - 24;
+    c.style.left = Math.min(Math.max(4, x), window.innerWidth - w - 4) + "px";
+    c.style.top = Math.min(Math.max(4, y), window.innerHeight - h - 4) + "px";
+  }
+
+  function wireChatDragging(head) {
+    let start = null;
+    head.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || e.target.closest("button")) return;
+      e.preventDefault();
+      const r = els.chat.getBoundingClientRect();
+      start = { dx: e.clientX - r.left, dy: e.clientY - r.top, w: r.width, h: r.height };
+      head.setPointerCapture(e.pointerId);
+      els.chat.classList.add("wa-dragging");
+    });
+    head.addEventListener("pointermove", (e) => {
+      if (!start) return;
+      chat.box = { x: e.clientX - start.dx, y: e.clientY - start.dy, w: Math.round(start.w), h: Math.round(start.h) };
+      positionChat();
+    });
+    const end = () => {
+      if (!start) return;
+      start = null;
+      els.chat.classList.remove("wa-dragging");
+      saveChatBox();
+    };
+    head.addEventListener("pointerup", end);
+    head.addEventListener("pointercancel", end);
+  }
+
+  async function setChatOpen(open) {
+    if (open === chat.open) return;
+    if (!els.chat) {
+      buildChat();
+      await loadChatBox();
+    }
+    chat.open = open;
+    els.chat.hidden = !open;
+    els.chatBtn?.classList.toggle("active", open);
+    clearInterval(chat.timer);
+    if (!open) return;
+    if (els.chat.parentNode !== uiHost()) uiHost().appendChild(els.chat);
+    positionChat();
+    renderChatFoot();
+    pollChat();
+    // În față: la 4 s. În fundal: o dată la ~20 s (nu deloc — pe unele sisteme, ex. Hyprland,
+    // Chromium raportează pagina „hidden” deși e pe ecran și are focus).
+    let tick = 0;
+    chat.timer = setInterval(() => {
+      tick++;
+      if (document.visibilityState === "visible" || document.hasFocus() || tick % 5 === 0) pollChat();
+    }, CHAT_POLL_MS);
+  }
+
+  window.addEventListener("resize", () => chat.open && positionChat());
+
+  function resetChat() {
+    chat.since = 0;
+    chat.ids.clear();
+    if (els.chatList) els.chatList.textContent = "";
+    if (chat.open) pollChat();
+  }
+
+  async function pollChat() {
+    if (chat.busy) return;
+    chat.busy = true;
+    try {
+      const r = await WA_Api.chatPoll(pageKey(), state.userId, chat.since);
+      chat.canWrite = r.canWrite;
+      chat.blocked = r.blocked;
+      const alive = new Set(r.alive);
+      // mesaje șterse de autor / scoase de moderator între timp
+      els.chatList.querySelectorAll(".wa-chat-msg").forEach((row) => {
+        if (!alive.has(row.dataset.id)) {
+          chat.ids.delete(row.dataset.id);
+          row.remove();
+        }
+      });
+      const atBottom = els.chatList.scrollHeight - els.chatList.scrollTop - els.chatList.clientHeight < 40;
+      for (const m of r.messages) {
+        chat.since = Math.max(chat.since, m.createdAt);
+        if (chat.ids.has(m.id)) continue;
+        chat.ids.add(m.id);
+        els.chatList.appendChild(chatRow(m));
+      }
+      if (!els.chatList.querySelector(".wa-chat-msg")) {
+        if (!els.chatList.querySelector(".wa-chat-empty")) els.chatList.append(el("div", { class: "wa-chat-empty" }, "Niciun mesaj în ultimele 24 de ore. Începe tu!"));
+      } else els.chatList.querySelector(".wa-chat-empty")?.remove();
+      if (atBottom || r.messages.length) els.chatList.scrollTop = els.chatList.scrollHeight;
+      const names = r.here.filter((h) => h.name).map((h) => (h.hash === state.userHash ? `${h.name} (tu)` : h.name));
+      els.chatHere.textContent = `👥 ${r.here.length}`;
+      els.chatHere.title = r.here.length ? `Acum pe pagină: ${names.join(", ") || "—"}${r.here.length > names.length ? ` + ${r.here.length - names.length} fără nume` : ""}` : "";
+      renderChatFoot();
+    } catch (err) {
+      console.warn("[Adormis] Chat:", err);
+    } finally {
+      chat.busy = false;
+    }
+  }
+
+  function chatTime(t) {
+    const d = new Date(t);
+    return d.toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function chatRow(m) {
+    const mine = m.authorHash === state.userHash;
+    if (!mine && m.authorName !== undefined) state.names.set(m.authorHash, m.authorName || null);
+    const actions = el("span", { class: "wa-chat-actions" });
+    if (mine) {
+      actions.append(
+        el("button", {
+          title: "Șterge mesajul",
+          onclick: async () => {
+            try {
+              await WA_Api.chatDelete(m.id, state.userId);
+              chat.ids.delete(m.id);
+              row.remove();
+            } catch (err) {
+              showSaveError(err.message);
+            }
+          },
+        }, "🗑")
+      );
+    } else {
+      actions.append(el("button", { title: "Raportează mesajul", onclick: () => openChatReport(m, row) }, "🚩"));
+    }
+    const row = el(
+      "div",
+      { class: `wa-chat-msg${mine ? " wa-chat-mine" : ""}`, "data-id": m.id },
+      el("div", { class: "wa-chat-meta" }, el("span", { class: "wa-chat-name" }, authorLabel(m.authorHash)), el("span", { class: "wa-chat-time" }, chatTime(m.createdAt)), actions),
+      el("div", { class: "wa-chat-text" }, m.text)
+    );
+    return row;
+  }
+
+  function openChatReport(m, row) {
+    row.querySelector(".wa-chat-report")?.remove();
+    const select = el("select", {}, el("option", { value: "" }, "Motivul…"), ...REPORT_REASONS.map(([v, l]) => el("option", { value: v }, l)));
+    const form = el(
+      "div",
+      { class: "wa-chat-report wa-inline-form" },
+      select,
+      el("button", { class: "wa-cancel", onclick: () => form.remove() }, "Anulează"),
+      el("button", {
+        class: "wa-submit",
+        onclick: async () => {
+          if (!select.value) return;
+          try {
+            await WA_Api.chatReport(m.id, state.userId, select.value);
+            form.replaceWith(el("div", { class: "wa-chat-note" }, "🚩 Raportat. Mulțumim!"));
+          } catch (err) {
+            showSaveError(err.message);
+          }
+        },
+      }, "Raportează")
+    );
+    stopKeysPropagating(select);
+    row.append(form);
+  }
+
+  function renderChatFoot() {
+    const foot = els.chatFoot;
+    const mode = chat.blocked ? "blocked" : linkLocked() || (state.meLoaded && !chat.canWrite && !state.hasPassword) ? "locked" : "write";
+    if (foot.dataset.mode === mode) return;
+    foot.dataset.mode = mode;
+    foot.textContent = "";
+    if (mode === "blocked") {
+      foot.append(el("div", { class: "wa-chat-note" }, "Nu mai poți scrie în chat (blocat de moderator)."));
+      return;
+    }
+    if (mode === "locked") {
+      foot.append(
+        el("div", { class: "wa-chat-note" }, "🔒 Doar cei cu cont pot scrie. Citești liber. "),
+        el("button", { class: "wa-need-account-btn", onclick: () => setMinePanelOpen(true) }, "Fă-ți cont")
+      );
+      return;
+    }
+    const input = el("input", { type: "text", maxlength: "300", placeholder: "Scrie un mesaj… (Enter trimite)" });
+    stopKeysPropagating(input);
+    const send = el("button", {
+      class: "wa-submit",
+      onclick: async () => {
+        const text = input.value.trim();
+        if (!text) return;
+        send.disabled = true;
+        try {
+          const m = await WA_Api.chatSend(pageKey(), state.userId, text);
+          input.value = "";
+          if (!chat.ids.has(m.id)) {
+            chat.ids.add(m.id);
+            chat.since = Math.max(chat.since, m.createdAt);
+            els.chatList.querySelector(".wa-chat-empty")?.remove();
+            els.chatList.appendChild(chatRow(m));
+            els.chatList.scrollTop = els.chatList.scrollHeight;
+          }
+        } catch (err) {
+          if (err.needAccount) showNeedAccount(err.message);
+          else showSaveError(err.message);
+        } finally {
+          send.disabled = false;
+          input.focus();
+        }
+      },
+    }, "Trimite");
+    // .wa-inline-form: key-guard.js trimite Enter din câmp la butonul .wa-submit
+    foot.append(el("div", { class: "wa-chat-input wa-inline-form" }, input, send));
+  }
+
   async function onPageNavigated() {
     els.svg.innerHTML = "";
     els.elements.innerHTML = "";
@@ -4348,6 +4621,7 @@
     document.querySelectorAll(".wa-popover, .wa-spray-confirm, .wa-lb-detail").forEach((p) => p.remove());
     setActiveTool(null);
     setMinePanelOpen(false); // lista era pentru pagina veche — se reface la o nouă deschidere
+    resetChat(); // altă pagină = altă cameră
     await loadExisting();
     refreshGlobalTop(); // topul e global, nu se resetează la navigare — doar îl reîmprospătăm
   }
@@ -4360,7 +4634,7 @@
   // Până la acord, extensia nu trimite NIMIC la server: nici amprenta paginii, nici Topul.
   // Acordul e global (o singură dată), ținut în chrome.storage; se retrage din popup.
   const CONSENT_KEY = "wa_consent";
-  const CONSENT_VERSION = 3; // crește dacă se schimbă ce date se trimit — se cere acord din nou
+  const CONSENT_VERSION = 4; // crește dacă se schimbă ce date se trimit — se cere acord din nou (4 = chat)
   // (2: amprenta IP la voturi/raportări, motivul raportărilor, termenii de utilizare;
   //  3: profilul public — adnotările unui autor de pe toate paginile, grupate)
   const PRIVACY_URL = "https://web-annotation-extension-production.up.railway.app/privacy";
@@ -4405,6 +4679,7 @@
         ),
         item("Linkuri:", "linkurile pe care le adaugi sunt verificate la URLhaus (abuse.ch) ca să nu fie periculoase."),
         item("Voturi și raportări:", "se păstrează împreună cu o amprentă a adresei IP (nu IP-ul), ca o conexiune să nu poată umfla voturile sau raportările cu identități inventate."),
+        item("Chat:", "dacă deschizi chatul, mesajele tale apar celor de pe aceeași pagină și se șterg după 24 de ore; cât e deschis, ceilalți văd că ești acolo. Scriu doar cei cu cont."),
         item("Nume (opțional):", "poți apărea cu un nume ales de tine, public și unic; altfel apari ca „Utilizator” urmat de 4 caractere."),
         item("Excepții:", "pe paginile locale sau interne (localhost, adrese IP) extensia nu pornește deloc.")
       ),

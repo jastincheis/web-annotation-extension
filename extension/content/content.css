@@ -1241,3 +1241,56 @@
   cursor: pointer;
 }
 .wa-save-error.wa-info { background: #1e1b2e; border-color: #7c3aed; color: #eae6ff; }
+
+/* ---------- Chat pe pagină ---------- */
+#wa-chat, #wa-chat * { box-sizing: border-box; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+#wa-chat {
+  position: fixed;
+  z-index: 2147483002;
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  min-height: 200px;
+  background: #1e1b2e;
+  color: #eae6ff;
+  border: 1px solid #3d3560;
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  resize: both;
+  overflow: hidden;
+  font-size: 13px;
+}
+#wa-chat[hidden] { display: none; }
+#wa-chat.wa-dragging { opacity: 0.9; user-select: none; }
+#wa-chat .wa-chat-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; cursor: move; user-select: none;
+  background: #2a2545; border-bottom: 1px solid #3d3560;
+}
+#wa-chat .wa-chat-title { font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#wa-chat .wa-chat-here { color: #a39cc4; font-size: 12px; cursor: help; }
+#wa-chat .wa-chat-close { background: none; border: 0; color: #a39cc4; cursor: pointer; font-size: 14px; padding: 2px 4px; }
+#wa-chat .wa-chat-close:hover { color: #fff; }
+#wa-chat .wa-chat-list { flex: 1; overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+#wa-chat .wa-chat-empty { color: #a39cc4; text-align: center; margin: auto 0; }
+#wa-chat .wa-chat-msg { background: #262238; border-radius: 10px; padding: 6px 9px; max-width: 92%; align-self: flex-start; }
+#wa-chat .wa-chat-msg.wa-chat-mine { background: #3b2a6b; align-self: flex-end; }
+#wa-chat .wa-chat-meta { display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: #a39cc4; margin-bottom: 2px; }
+#wa-chat .wa-chat-name { font-weight: 600; color: #c4b5fd; }
+#wa-chat .wa-chat-actions { margin-left: auto; opacity: 0; transition: opacity 0.15s; }
+#wa-chat .wa-chat-msg:hover .wa-chat-actions { opacity: 1; }
+#wa-chat .wa-chat-actions button { background: none; border: 0; cursor: pointer; font-size: 12px; padding: 0 2px; }
+#wa-chat .wa-chat-text { white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
+#wa-chat .wa-chat-report { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+#wa-chat .wa-chat-report select { flex: 1; min-width: 120px; background: #131120; color: #eae6ff; border: 1px solid #3d3560; border-radius: 6px; padding: 3px; }
+#wa-chat .wa-chat-report button, #wa-chat .wa-chat-input button {
+  background: #2a2545; color: #eae6ff; border: 1px solid #3d3560; border-radius: 8px; padding: 4px 10px; cursor: pointer; font: inherit;
+}
+#wa-chat .wa-chat-report .wa-submit, #wa-chat .wa-chat-input .wa-submit { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+#wa-chat .wa-chat-note { color: #a39cc4; font-size: 12px; }
+#wa-chat .wa-chat-foot { border-top: 1px solid #3d3560; padding: 8px 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#wa-chat .wa-chat-input { display: flex; gap: 6px; width: 100%; }
+#wa-chat .wa-chat-input input {
+  flex: 1; min-width: 0; background: #131120; color: #eae6ff; border: 1px solid #3d3560; border-radius: 8px; padding: 6px 8px; font: inherit;
+}
+#wa-chat .wa-chat-input input:focus { outline: none; border-color: #7c3aed; }

@@ -184,6 +184,9 @@ function mergeIdentity(fromId, toId) {
       }
     }
 
+    db.prepare("UPDATE chat_messages SET author_hash = ? WHERE author_hash = ?").run(toHash, fromHash);
+    db.prepare("UPDATE OR IGNORE chat_reports SET reporter_hash = ? WHERE reporter_hash = ?").run(toHash, fromHash);
+    db.prepare("DELETE FROM chat_presence WHERE author_hash = ?").run(fromHash);
     db.prepare("DELETE FROM users WHERE author_hash = ? AND password_hash IS NULL").run(fromHash);
     db.exec("COMMIT");
   } catch (err) {

@@ -60,12 +60,21 @@ router.get("/queue", (req, res) => {
 // cont cu parolă, câte adnotări (și câte vizibile), voturi date, raportări făcute și ultima
 // activitate. Cei mai recenți primii. Căutarea se face în pagină (lista e mică).
 router.get("/users", (_req, res) => {
+  const collected = collectUsers();
+  const chatCount = new Map(
+    db.prepare("SELECT author_hash, COUNT(*) AS n FROM chat_messages WHERE removed_at IS NULL GROUP BY author_hash").all().map((r) => [r.author_hash, r.n])
+  );
+  const chatBlocked = new Set(db.prepare("SELECT author_hash FROM chat_blocks").all().map((r) => r.author_hash));
+  // cine a scris doar în chat apare și el în listă
+  for (const hash of chatCount.keys()) if (!collected.has(hash)) collected.set(hash, { annotations: 0, visible: 0, votes: 0, reports: 0, firstAt: null, lastAt: null });
   const accounts = new Map(db.prepare("SELECT author_hash, name, password_hash FROM users").all().map((r) => [r.author_hash, r]));
-  const list = [...collectUsers()].map(([hash, u]) => ({
+  const list = [...collected].map(([hash, u]) => ({
     hash,
     name: accounts.get(hash)?.name || null,
     hasPassword: !!accounts.get(hash)?.password_hash,
     ...u,
+    chatMessages: chatCount.get(hash) || 0,
+    chatBlocked: chatBlocked.has(hash),
   }));
   list.sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0));
   res.json(list);
@@ -194,6 +203,15 @@ router.post("/users/:hash/delete", (req, res) => {
       db.prepare("DELETE FROM annotations WHERE id = ?").run(a.id);
     }
     done.annotations = own.length;
+    // chatul: mesajele lui (nu și cele scoase de moderator — evidență) și raportările făcute
+    for (const r of db.prepare("SELECT message_id FROM chat_reports WHERE reporter_hash = ?").all(hash)) {
+      db.prepare("UPDATE chat_messages SET reports = MAX(reports - 1, 0) WHERE id = ?").run(r.message_id);
+    }
+    db.prepare("DELETE FROM chat_reports WHERE reporter_hash = ?").run(hash);
+    const chatIds = db.prepare("SELECT id FROM chat_messages WHERE author_hash = ? AND removed_at IS NULL").all(hash);
+    for (const m of chatIds) db.prepare("DELETE FROM chat_reports WHERE message_id = ?").run(m.id);
+    done.chat = db.prepare("DELETE FROM chat_messages WHERE author_hash = ? AND removed_at IS NULL").run(hash).changes;
+    db.prepare("DELETE FROM chat_presence WHERE author_hash = ?").run(hash);
     done.name = db.prepare("DELETE FROM users WHERE author_hash = ?").run(hash).changes > 0;
     db.exec("COMMIT");
   } catch (err) {
@@ -201,6 +219,59 @@ router.post("/users/:hash/delete", (req, res) => {
     throw err;
   }
   res.json({ ok: true, ...done });
+});
+
+// ---------- Chat ----------
+// GET /api/admin/chat — mesajele raportate (încă vizibile sau ascunse automat) și cele scoase.
+router.get("/chat", (_req, res) => {
+  const view = (m) => ({
+    id: m.id,
+    urlHash: m.url_hash,
+    authorHash: m.author_hash,
+    authorName: displayNameFor(m.author_hash),
+    text: m.text,
+    createdAt: m.created_at,
+    reports: m.reports,
+    removedAt: m.removed_at,
+    removedReason: m.removed_reason,
+    reasons: db.prepare("SELECT reason, COUNT(*) AS n FROM chat_reports WHERE message_id = ? GROUP BY reason").all(m.id),
+  });
+  res.json({
+    reported: db.prepare("SELECT * FROM chat_messages WHERE reports > 0 AND removed_at IS NULL ORDER BY reports DESC, created_at DESC LIMIT 200").all().map(view),
+    removed: db.prepare("SELECT * FROM chat_messages WHERE removed_at IS NOT NULL ORDER BY removed_at DESC LIMIT 200").all().map(view),
+  });
+});
+
+// POST /api/admin/chat/:id/remove  { reason } — scoate mesajul pentru toți (motivul rămâne în evidență).
+router.post("/chat/:id/remove", (req, res) => {
+  const reason = String(req.body?.reason || "").trim();
+  if (reason.length < 3 || reason.length > 500) return res.status(400).json({ error: "Scrie motivul (3–500 caractere)" });
+  const r = db.prepare("UPDATE chat_messages SET removed_at = ?, removed_reason = ? WHERE id = ? AND removed_at IS NULL").run(Date.now(), reason, req.params.id);
+  if (!r.changes) return res.status(404).json({ error: "Nu există sau e deja scos" });
+  res.json({ ok: true });
+});
+
+// POST /api/admin/chat/:id/restore — repune mesajul și șterge raportările lui.
+router.post("/chat/:id/restore", (req, res) => {
+  const r = db.prepare("UPDATE chat_messages SET removed_at = NULL, removed_reason = NULL, reports = 0 WHERE id = ?").run(req.params.id);
+  if (!r.changes) return res.status(404).json({ error: "Nu există" });
+  db.prepare("DELETE FROM chat_reports WHERE message_id = ?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// POST /api/admin/users/:hash/chat-block  { blocked: true|false, reason? } — nu mai poate scrie în chat.
+router.post("/users/:hash/chat-block", (req, res) => {
+  if (!/^[0-9a-f]{32}$/.test(req.params.hash)) return res.status(400).json({ error: "ID public invalid (32 de caractere hex)" });
+  if (req.body?.blocked) {
+    db.prepare("INSERT OR REPLACE INTO chat_blocks (author_hash, reason, created_at) VALUES (?, ?, ?)").run(
+      req.params.hash,
+      String(req.body.reason || "").slice(0, 500) || null,
+      Date.now()
+    );
+  } else {
+    db.prepare("DELETE FROM chat_blocks WHERE author_hash = ?").run(req.params.hash);
+  }
+  res.json({ ok: true, blocked: !!req.body?.blocked });
 });
 
 module.exports = router;

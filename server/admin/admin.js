@@ -95,6 +95,7 @@ const userLabel = (u) => u.name || `Utilizator ${u.hash.slice(0, 4).toUpperCase(
 function userCard(u) {
   const actions = el("div", { class: "actions" }, el("button", { "data-act": "anns" }, `Vezi adnotările (${u.visible})`));
   if (u.name) actions.append(el("button", { "data-act": "reset-name" }, `Resetează numele „${u.name}”`));
+  actions.append(el("button", { "data-act": "chat-block" }, u.chatBlocked ? "Deblochează în chat" : "Blochează din chat"));
   actions.append(el("button", { "data-act": "delete-user", class: "danger" }, "Șterge utilizatorul"));
   const anns = el("ul", { class: "user-anns" });
   const c = el(
@@ -108,6 +109,8 @@ function userCard(u) {
     el("div", { class: "meta" },
       el("span", {}, `${plural(u.annotations, "adnotare", "adnotări")}${u.annotations !== u.visible ? ` (${u.visible} vizibile)` : ""}`),
       el("span", {}, plural(u.votes, "vot dat", "voturi date")),
+      u.chatMessages ? el("span", {}, plural(u.chatMessages, "mesaj în chat", "mesaje în chat")) : "",
+      u.chatBlocked ? el("span", { class: "badge hidden" }, "blocat în chat") : "",
       u.reports ? el("span", {}, plural(u.reports, "raportare făcută", "raportări făcute")) : "",
       el("span", {}, u.firstAt ? `prima activitate ${when(u.firstAt)}` : "doar a votat"),
       u.lastAt ? el("span", {}, `ultima ${when(u.lastAt)}`) : ""
@@ -119,6 +122,11 @@ function userCard(u) {
     const act = e.target.dataset?.act;
     if (!act) return;
     try {
+      if (act === "chat-block") {
+        await api(`/users/${u.hash}/chat-block`, { blocked: !u.chatBlocked });
+        $("#msg").textContent = u.chatBlocked ? `${userLabel(u)} poate scrie din nou în chat.` : `${userLabel(u)} nu mai poate scrie în chat.`;
+        return load();
+      }
       if (act === "delete-user") {
         // a doua apăsare confirmă (fără dialog de browser)
         if (!e.target.dataset.armed) {
@@ -160,10 +168,56 @@ function renderUsers() {
   shown.forEach((u) => $("#list").append(userCard(u)));
 }
 
+// ---------- Chat ----------
+// Mesajele raportate (cele cu 3+ raportări sunt deja ascunse automat) și cele scoase.
+function chatCard(m) {
+  const reason = el("input", { placeholder: "Motivul (apare în evidență)", maxlength: "500" });
+  const actions = el("div", { class: "actions" });
+  if (m.removedAt) actions.append(el("button", { class: "ok", "data-act": "restore" }, "Repune"));
+  else actions.append(reason, el("button", { class: "danger", "data-act": "remove" }, "Scoate"), el("button", { "data-act": "restore" }, "Raportări nefondate (repune)"));
+  const c = el(
+    "article",
+    { class: "card" },
+    el("div", { class: "meta" },
+      el("span", { class: "badge" }, "chat"),
+      m.removedAt ? "" : el("span", { class: m.reports >= 3 ? "badge hidden" : "badge" }, `${m.reports} raportări${m.reports >= 3 ? " · ascuns automat" : ""}`),
+      el("span", {}, `autor: ${m.authorName || "Utilizator " + String(m.authorHash).slice(0, 4).toUpperCase()}`),
+      el("span", {}, `scris ${when(m.createdAt)}`),
+      m.removedAt ? el("span", {}, `scos ${when(m.removedAt)}`) : ""
+    ),
+    el("div", { class: "content" }, m.text),
+    m.removedReason ? el("div", {}, "Motivul scoaterii: ", m.removedReason) : "",
+    m.reasons?.length ? el("ul", { class: "reports" }, ...m.reasons.map((r) => el("li", {}, `${REASONS[r.reason] || r.reason} × ${r.n}`))) : "",
+    actions
+  );
+  actions.addEventListener("click", async (e) => {
+    const act = e.target.dataset?.act;
+    if (!act) return;
+    try {
+      if (act === "remove") await api(`/chat/${m.id}/remove`, { reason: reason.value });
+      else await api(`/chat/${m.id}/restore`, {});
+      $("#msg").textContent = act === "remove" ? "Mesajul a fost scos." : "Mesajul a fost repus.";
+      load();
+    } catch (err) {
+      $("#msg").textContent = err.message;
+    }
+  });
+  return c;
+}
+
+function renderChat({ reported, removed }) {
+  $("#list").append(el("h2", {}, "Mesaje raportate"));
+  if (!reported.length) $("#list").append(el("p", {}, "Niciun mesaj raportat."));
+  reported.forEach((m) => $("#list").append(chatCard(m)));
+  $("#list").append(el("h2", {}, "Mesaje scoase"));
+  if (!removed.length) $("#list").append(el("p", {}, "Nimic scos încă."));
+  removed.forEach((m) => $("#list").append(chatCard(m)));
+}
+
 async function load() {
   $("#list").textContent = "";
   try {
-    const items = await api(status === "users" ? "/users" : `/queue?status=${status}`);
+    const items = await api(status === "users" ? "/users" : status === "chat" ? "/chat" : `/queue?status=${status}`);
     $("#login").hidden = true;
     $("#tabs").hidden = false;
     $("#name-form").hidden = false;
@@ -173,6 +227,7 @@ async function load() {
       users = items;
       return renderUsers();
     }
+    if (status === "chat") return renderChat(items);
     if (!items.length) $("#list").append(el("p", {}, status === "removed" ? "Nimic scos încă." : "Nicio adnotare raportată."));
     items.forEach((a) => $("#list").append(card(a)));
   } catch (err) {

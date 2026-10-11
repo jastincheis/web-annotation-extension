@@ -50,6 +50,11 @@ Endpoint-uri disponibile:
 - `POST /api/admin/users/:authorHash/reset-name` — moderatorul șterge un nume nepotrivit
 - `POST /api/admin/users/:authorHash/delete` — moderatorul șterge un utilizator: adnotările lui, voturile și raportările date (scorurile se corectează), numele/contul
 - `GET /api/admin/backup` — descarcă o copie a bazei de date (privată: conține ID-urile secrete și hash-urile parolelor)
+- `POST /api/chat/poll` — `{urlHash, authorId?, since?}` → mesajele camerei (ultimele 24 h), `alive` (id-urile încă vizibile), `here` (cine are chatul deschis în ultimele 30 s), `canWrite`, `blocked`
+- `POST /api/chat` — `{urlHash, authorId, text}`: mesaj nou (doar cu cont, ≤ 300 caractere, 6/minut, 1 la 2 s)
+- `DELETE /api/chat/:id` — `{authorId}`: autorul își șterge mesajul
+- `POST /api/chat/:id/report` — `{reporterId, reason}`; la 3 raportări mesajul se ascunde
+- `GET /api/admin/chat`, `POST /api/admin/chat/:id/remove|restore`, `POST /api/admin/users/:authorHash/chat-block` `{blocked}` — moderarea chatului
 - `POST /api/users/me` — `{authorId}` → `{name, hasPassword, freeLeft}` (`freeLeft` = câte adnotări mai poate face azi cine n-are cont; `null` cu cont)
 - `POST /api/users/password` — `{authorId, password}` (min. 8): creează contul / schimbă parola;
   cere un nume ales (= numele de utilizator); parola doar ca hash scrypt

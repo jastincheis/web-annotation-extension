@@ -11,6 +11,7 @@ const annotationsRouter = require("./routes/annotations");
 const checkUrlRouter = require("./routes/check-url");
 const adminRouter = require("./routes/admin");
 const usersRouter = require("./routes/users");
+const chatRouter = require("./routes/chat");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -50,6 +51,7 @@ app.get("/api/version", (_req, res) => res.sendFile(path.join(__dirname, "versio
 
 app.use("/api/annotations", annotationsRouter);
 app.use("/api/users", usersRouter);
+app.use("/api/chat", chatRouter);
 app.use("/api/admin", adminRouter);
 
 // Pagina de moderare (server/admin). Antete stricte: doar resurse proprii, fără încadrare în
