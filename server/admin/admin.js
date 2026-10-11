@@ -13,6 +13,7 @@ const REASONS = {
 const $ = (s) => document.querySelector(s);
 let token = sessionStorage.getItem("wa_admin_token") || "";
 let status = "reported";
+let me = null; // { name, role } — rolul vine de la server; pagina doar ascunde ce nu e permis
 
 function el(tag, attrs = {}, ...kids) {
   const n = document.createElement(tag);
@@ -96,7 +97,7 @@ function userCard(u) {
   const actions = el("div", { class: "actions" }, el("button", { "data-act": "anns" }, `Vezi adnotările (${u.visible})`));
   if (u.name) actions.append(el("button", { "data-act": "reset-name" }, `Resetează numele „${u.name}”`));
   actions.append(el("button", { "data-act": "chat-block" }, u.chatBlocked ? "Deblochează în chat" : "Blochează din chat"));
-  actions.append(el("button", { "data-act": "delete-user", class: "danger" }, "Șterge utilizatorul"));
+  if (me?.role === "owner") actions.append(el("button", { "data-act": "delete-user", class: "danger" }, "Șterge utilizatorul"));
   const anns = el("ul", { class: "user-anns" });
   const c = el(
     "article",
@@ -214,10 +215,137 @@ function renderChat({ reported, removed }) {
   removed.forEach((m) => $("#list").append(chatCard(m)));
 }
 
+// ---------- Moderatori (doar proprietarul) ----------
+const ROLE_LABEL = { owner: "proprietar", moderator: "moderator" };
+
+function renderMods(tokens) {
+  const name = el("input", { placeholder: "Numele omului (ex. Vlad)", maxlength: "40", required: "" });
+  const role = el("select", {}, el("option", { value: "moderator" }, "Moderator"), el("option", { value: "owner" }, "Proprietar (tot)"));
+  const create = el("button", { type: "submit" }, "Creează token");
+  const out = el("div");
+  const form = el("form", { class: "card" },
+    el("strong", {}, "Moderator nou"),
+    el("p", { class: "meta" }, "Moderatorul poate scoate și repune adnotări și mesaje, bloca din chat și reseta nume. Nu poate șterge utilizatori, reseta parole, descărca backup-ul sau face alți moderatori."),
+    el("div", { class: "actions" }, name, role, create),
+    out
+  );
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api("/tokens", { name: name.value, role: role.value });
+      const code = el("code", {}, r.token);
+      const copy = el("button", { type: "button" }, "Copiază");
+      copy.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(r.token);
+          copy.textContent = "Copiat ✓";
+        } catch {
+          copy.textContent = "Selectează și copiază manual";
+        }
+      };
+      out.textContent = "";
+      out.append(el("div", { class: "token-box" },
+        el("strong", {}, `Tokenul lui ${r.name} (${ROLE_LABEL[r.role]}) — apare o singură dată:`),
+        code,
+        el("div", { class: "actions" }, copy),
+        el("span", { class: "meta" }, "Trimite-l doar lui, pe o cale privată. Intră pe această pagină (/admin) și îl pune la „Token de administrator”. Dacă îl pierde, îi faci altul și îl retragi pe acesta.")
+      ));
+      name.value = "";
+      loadTokenList(list);
+    } catch (err) {
+      $("#msg").textContent = err.message;
+    }
+  });
+  const list = el("div", { class: "card" });
+  $("#list").append(form, list);
+  fillTokenList(list, tokens);
+}
+
+async function loadTokenList(list) {
+  try {
+    fillTokenList(list, await api("/tokens"));
+  } catch (err) {
+    $("#msg").textContent = err.message;
+  }
+}
+
+function fillTokenList(list, tokens) {
+  list.textContent = "";
+  list.append(el("strong", {}, "Tokenuri"));
+  list.append(el("p", { class: "meta" }, "Proprietarul principal intră cu ADMIN_TOKEN de pe server; acela nu apare aici și nu se retrage de aici."));
+  if (!tokens.length) list.append(el("p", {}, "Niciun moderator încă."));
+  for (const t of tokens) {
+    const row = el("div", { class: "actions" },
+      el("span", { class: t.revokedAt ? "badge revoked" : "badge" }, `${t.name} · ${ROLE_LABEL[t.role]}`),
+      el("span", { class: "meta" }, `creat ${when(t.createdAt)}${t.createdBy ? " de " + t.createdBy : ""} · folosit ${t.lastUsedAt ? when(t.lastUsedAt) : "niciodată"}${t.revokedAt ? " · retras " + when(t.revokedAt) : ""}`)
+    );
+    if (!t.revokedAt) {
+      const revoke = el("button", { class: "danger", type: "button" }, "Retrage");
+      revoke.onclick = async () => {
+        if (!revoke.dataset.armed) {
+          revoke.dataset.armed = "1";
+          revoke.textContent = `Sigur? ${t.name} nu mai poate intra — apasă din nou`;
+          return;
+        }
+        try {
+          await api(`/tokens/${t.id}/revoke`, {});
+          $("#msg").textContent = `Tokenul lui ${t.name} a fost retras.`;
+          loadTokenList(list);
+        } catch (err) {
+          $("#msg").textContent = err.message;
+        }
+      };
+      row.append(revoke);
+    }
+    list.append(row);
+  }
+}
+
+// ---------- Jurnal (doar proprietarul) ----------
+const LOG_ACTIONS = [
+  [/^\/annotations\/:id\/remove$/, "a scos o adnotare"],
+  [/^\/annotations\/:id\/restore$/, "a repus o adnotare"],
+  [/^\/chat\/:id\/remove$/, "a scos un mesaj din chat"],
+  [/^\/chat\/:id\/restore$/, "a repus un mesaj din chat"],
+  [/^\/users\/:id\/chat-block$/, "blocare în chat"],
+  [/^\/users\/:id\/reset-name$/, "a resetat un nume"],
+  [/^\/users\/:id\/set-name$/, "a dat un nume"],
+  [/^\/users\/:id\/delete$/, "a șters un utilizator"],
+  [/^\/users\/reset-password$/, "a resetat o parolă"],
+  [/^\/tokens$/, "a creat un token"],
+  [/^\/tokens\/:id\/revoke$/, "a retras un token"],
+];
+function logLabel(action) {
+  return (LOG_ACTIONS.find(([re]) => re.test(action)) || [null, action])[1];
+}
+
+function renderLog(rows) {
+  if (!rows.length) return $("#list").append(el("p", {}, "Nicio acțiune încă."));
+  const table = el("table", { class: "log-table" },
+    el("thead", {}, el("tr", {}, el("th", {}, "Când"), el("th", {}, "Cine"), el("th", {}, "Ce"), el("th", {}, "Asupra"), el("th", {}, "Detalii")))
+  );
+  const body = el("tbody");
+  for (const r of rows) {
+    let d = "";
+    try {
+      const o = JSON.parse(r.details || "{}");
+      d = [o.reason && `motiv: ${o.reason}`, o.name && `nume: ${o.name}`, o.role && `rol: ${o.role}`, o.blocked !== undefined && (o.blocked ? "blocat" : "deblocat")].filter(Boolean).join(" · ");
+    } catch {}
+    body.append(el("tr", {}, el("td", {}, when(r.at)), el("td", {}, `${r.actor} (${ROLE_LABEL[r.role] || r.role})`), el("td", {}, logLabel(r.action)), el("td", {}, r.target ? String(r.target).slice(0, 8) : ""), el("td", {}, d)));
+  }
+  table.append(body);
+  $("#list").append(table);
+}
+
 async function load() {
   $("#list").textContent = "";
   try {
-    const items = await api(status === "users" ? "/users" : status === "chat" ? "/chat" : `/queue?status=${status}`);
+    me = await api("/me");
+    document.body.classList.toggle("is-owner", me.role === "owner");
+    $("#whoami").textContent = `${me.name} · ${ROLE_LABEL[me.role]}`;
+    if (me.role !== "owner" && (status === "mods" || status === "log")) status = "reported";
+    const path = { users: "/users", chat: "/chat", mods: "/tokens", log: "/log" }[status] || `/queue?status=${status}`;
+    const items = await api(path);
     $("#login").hidden = true;
     $("#tabs").hidden = false;
     $("#name-form").hidden = false;
@@ -228,6 +356,8 @@ async function load() {
       return renderUsers();
     }
     if (status === "chat") return renderChat(items);
+    if (status === "mods") return renderMods(items);
+    if (status === "log") return renderLog(items);
     if (!items.length) $("#list").append(el("p", {}, status === "removed" ? "Nimic scos încă." : "Nicio adnotare raportată."));
     items.forEach((a) => $("#list").append(card(a)));
   } catch (err) {

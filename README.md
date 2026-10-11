@@ -50,6 +50,7 @@ Endpoint-uri disponibile:
 - `POST /api/admin/users/:authorHash/reset-name` — moderatorul șterge un nume nepotrivit
 - `POST /api/admin/users/:authorHash/delete` — moderatorul șterge un utilizator: adnotările lui, voturile și raportările date (scorurile se corectează), numele/contul
 - `GET /api/admin/backup` — descarcă o copie a bazei de date (privată: conține ID-urile secrete și hash-urile parolelor)
+- Roluri în /admin: `ADMIN_TOKEN` = proprietar; tokenuri pe persoană create din tabul Moderatori (`GET/POST /api/admin/tokens`, `POST /api/admin/tokens/:id/revoke`), rol `owner` sau `moderator`. Moderatorul NU poate: șterge utilizatori, reseta parole, da nume rezervate, descărca backup-ul, gestiona tokenuri, vedea jurnalul. `GET /api/admin/me` → `{name, role}`; `GET /api/admin/log` — jurnalul acțiunilor (proprietar). În baza de date stă doar SHA-256 al tokenului.
 - `POST /api/chat/poll` — `{urlHash, authorId?, since?}` → mesajele camerei (ultimele 24 h), `alive` (id-urile încă vizibile), `here` (cine are chatul deschis în ultimele 30 s), `canWrite`, `blocked`
 - `POST /api/chat` — `{urlHash, authorId, text}`: mesaj nou (doar cu cont, ≤ 300 caractere, 6/minut, 1 la 2 s)
 - `DELETE /api/chat/:id` — `{authorId}`: autorul își șterge mesajul

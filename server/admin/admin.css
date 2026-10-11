@@ -40,3 +40,11 @@ main { max-width: 1000px; margin: 0 auto; display: grid; gap: 12px; }
 .user-id { color: var(--muted); font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; user-select: all; }
 .user-anns { margin: 0; padding-left: 18px; color: var(--muted); }
 .user-anns a { color: #93c5fd; overflow-wrap: anywhere; }
+body:not(.is-owner) .owner-only { display: none !important; }
+#whoami { color: var(--muted); font-size: 12.5px; }
+.token-box { background: #13301f; border: 1px solid var(--ok); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; }
+.token-box code { font-size: 15px; user-select: all; overflow-wrap: anywhere; }
+.log-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.log-table th, .log-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+.log-table th { color: var(--muted); font-weight: 500; }
+.badge.revoked { color: var(--muted); text-decoration: line-through; }

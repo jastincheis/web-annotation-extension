@@ -20,16 +20,19 @@
       <button data-status="removed">Scoase</button>
       <button data-status="users">Utilizatori</button>
       <button data-status="chat">Chat</button>
+      <button data-status="mods" class="owner-only">Moderatori</button>
+      <button data-status="log" class="owner-only">Jurnal</button>
+      <span id="whoami"></span>
       <button id="logout" type="button">Ieși</button>
     </nav>
   </header>
-  <form id="name-form" hidden>
+  <form id="name-form" class="owner-only" hidden>
     <strong>Dă un nume</strong> (și unul rezervat, ex. „Adormis”) —
     <input id="name-hash" placeholder="ID public (32 de caractere, din „Ale mele”)" maxlength="32" required>
     <input id="name-value" placeholder="Numele" maxlength="24" required>
     <button type="submit">Salvează numele</button>
   </form>
-  <form id="pass-form" hidden>
+  <form id="pass-form" class="owner-only" hidden>
     <strong>Resetează parola</strong> (doar dacă ești convins că e titularul contului) —
     <input id="pass-name" placeholder="Numele de utilizator" maxlength="24" required>
     <button type="submit">Generează parolă temporară</button>

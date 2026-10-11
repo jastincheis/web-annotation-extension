@@ -14,11 +14,110 @@ function sameSecret(a, b) {
   return crypto.timingSafeEqual(x, y);
 }
 
+// Cine intră: ADMIN_TOKEN (variabila de pe server) = proprietarul; în plus, tokenuri create din
+// /admin, fiecare cu numele omului și un rol — „owner” (tot) sau „moderator” (scoate/repune,
+// blochează din chat, resetează nume). În baza de date stă doar amprenta tokenului, nu tokenul.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS admin_tokens (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('owner', 'moderator')),
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL,
+    created_by TEXT,
+    last_used_at INTEGER,
+    revoked_at INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS mod_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at INTEGER NOT NULL,
+    actor TEXT NOT NULL,
+    role TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target TEXT,
+    details TEXT
+  );
+`);
+const tokenHash = (t) => crypto.createHash("sha256").update(String(t)).digest("hex");
+
 router.use((req, res, next) => {
   if (ADMIN_TOKEN.length < 24) return res.status(404).json({ error: "Not found" });
   const given = (req.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!given || !sameSecret(given, ADMIN_TOKEN)) return res.status(401).json({ error: "Token greșit" });
+  if (!given) return res.status(401).json({ error: "Token greșit" });
+  if (sameSecret(given, ADMIN_TOKEN)) {
+    req.actor = { id: null, name: "Proprietar", role: "owner" };
+  } else {
+    const row = db.prepare("SELECT * FROM admin_tokens WHERE token_hash = ? AND revoked_at IS NULL").get(tokenHash(given));
+    if (!row) return res.status(401).json({ error: "Token greșit" });
+    db.prepare("UPDATE admin_tokens SET last_used_at = ? WHERE id = ?").run(Date.now(), row.id);
+    req.actor = { id: row.id, name: row.name, role: row.role };
+  }
+  // Jurnal: orice acțiune reușită (POST) — cine, ce, asupra cui, cu ce detalii (motiv, nume).
+  if (req.method === "POST") {
+    res.on("finish", () => {
+      if (res.statusCode >= 400) return;
+      const { reason, name, role, blocked } = req.body || {};
+      const details = JSON.stringify({ reason, name, role, blocked }, (k, v) => (v === undefined ? undefined : v));
+      db.prepare("INSERT INTO mod_log (at, actor, role, action, target, details) VALUES (?, ?, ?, ?, ?, ?)").run(
+        Date.now(),
+        req.actor.name,
+        req.actor.role,
+        req.path.replace(/\/[0-9a-f-]{20,}/gi, "/:id"),
+        Object.values(req.params || {}).join(",") || (req.path.match(/[0-9a-f-]{20,}/i) || [""])[0] || null,
+        details === "{}" ? null : details
+      );
+    });
+  }
   next();
+});
+
+// Doar proprietarul: ștergerea utilizatorilor, parole, nume rezervate, backup, moderatori, jurnal.
+function ownerOnly(req, res, next) {
+  if (req.actor?.role !== "owner") return res.status(403).json({ error: "Doar proprietarul poate face asta." });
+  next();
+}
+
+// GET /api/admin/me — cine ești și ce poți face (pagina ascunde ce nu-ți e permis).
+router.get("/me", (req, res) => res.json({ name: req.actor.name, role: req.actor.role }));
+
+// ---------- Moderatori (tokenuri) — doar proprietarul ----------
+router.get("/tokens", ownerOnly, (_req, res) => {
+  res.json(
+    db
+      .prepare("SELECT id, name, role, created_at, created_by, last_used_at, revoked_at FROM admin_tokens ORDER BY revoked_at IS NOT NULL, created_at DESC")
+      .all()
+      .map((t) => ({ id: t.id, name: t.name, role: t.role, createdAt: t.created_at, createdBy: t.created_by, lastUsedAt: t.last_used_at, revokedAt: t.revoked_at }))
+  );
+});
+
+// POST /api/admin/tokens  { name, role } — tokenul se arată O SINGURĂ DATĂ, în răspuns.
+router.post("/tokens", ownerOnly, (req, res) => {
+  const name = String(req.body?.name || "").trim();
+  const role = req.body?.role === "owner" ? "owner" : "moderator";
+  if (name.length < 2 || name.length > 40) return res.status(400).json({ error: "Scrie numele omului (2–40 de caractere)" });
+  const token = crypto.randomBytes(32).toString("base64url");
+  const id = crypto.randomUUID();
+  db.prepare("INSERT INTO admin_tokens (id, name, role, token_hash, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)").run(
+    id,
+    name,
+    role,
+    tokenHash(token),
+    Date.now(),
+    req.actor.name
+  );
+  res.status(201).json({ id, name, role, token });
+});
+
+router.post("/tokens/:id/revoke", ownerOnly, (req, res) => {
+  if (req.params.id === req.actor.id) return res.status(400).json({ error: "Nu îți poți retrage propriul token de aici." });
+  const r = db.prepare("UPDATE admin_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(Date.now(), req.params.id);
+  if (!r.changes) return res.status(404).json({ error: "Nu există sau e deja retras" });
+  res.json({ ok: true });
+});
+
+// GET /api/admin/log — ultimele 300 de acțiuni de moderare.
+router.get("/log", ownerOnly, (_req, res) => {
+  res.json(db.prepare("SELECT * FROM mod_log ORDER BY id DESC LIMIT 300").all());
 });
 
 function adminView(row) {
@@ -103,7 +202,7 @@ router.post("/annotations/:id/restore", (req, res) => {
 
 // POST /api/admin/users/:hash/set-name  { name } — moderatorul dă un nume, inclusiv unul
 // rezervat (ex. „Adormis” pentru contul proprietarului). Tot unic, tot cu regulile de format.
-router.post("/users/:hash/set-name", (req, res) => {
+router.post("/users/:hash/set-name", ownerOnly, (req, res) => {
   const { validateName, assignName } = require("./users");
   if (!/^[0-9a-f]{32}$/.test(req.params.hash)) return res.status(400).json({ error: "ID public invalid (32 de caractere hex)" });
   const v = validateName(req.body?.name, { allowReserved: true });
@@ -117,7 +216,7 @@ router.post("/users/:hash/set-name", (req, res) => {
 // POST /api/admin/users/reset-password  { name } — recuperare la cerere (prin email către
 // administrator; fără garanție). Generează o parolă temporară, arătată O SINGURĂ DATĂ, și
 // întoarce câteva adnotări ale contului, ca moderatorul să compare cu ce descrie cel care cere.
-router.post("/users/reset-password", (req, res) => {
+router.post("/users/reset-password", ownerOnly, (req, res) => {
   const { hashPassword } = require("./users");
   const row = db.prepare("SELECT * FROM users WHERE name_key = ?").get(nameKey(String(req.body?.name || "")));
   if (!row?.password_hash) return res.status(404).json({ error: "Nu există un cont cu parolă cu acest nume." });
@@ -155,7 +254,7 @@ router.post("/users/:hash/reset-name", (req, res) => {
 // GET /api/admin/backup — copie consistentă a bazei de date (VACUUM INTO într-un fișier
 // temporar), descărcată ca annotations-AAAA-LL-ZZ.db. Conține secretele utilizatorilor
 // (author_id, hash-uri de parolă) — se păstrează privat.
-router.get("/backup", (_req, res) => {
+router.get("/backup", ownerOnly, (_req, res) => {
   const os = require("node:os");
   const fs = require("node:fs");
   const path = require("node:path");
@@ -170,7 +269,7 @@ router.get("/backup", (_req, res) => {
 // adnotărilor afectate se corectează), numele și contul. Adnotările scoase de moderator rămân
 // înregistrate, cu motivul (DSA), până la ștergerea lor automată.
 // Nu blochează nimic: dacă omul folosește extensia din nou, apare ca utilizator nou.
-router.post("/users/:hash/delete", (req, res) => {
+router.post("/users/:hash/delete", ownerOnly, (req, res) => {
   const hash = req.params.hash;
   if (!/^[0-9a-f]{32}$/.test(hash)) return res.status(400).json({ error: "ID public invalid (32 de caractere hex)" });
   const short = (id) => sha256Hex(id).slice(0, 32);
