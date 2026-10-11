@@ -1256,21 +1256,17 @@
   }
 
   function isOverVideo(rect) {
-    const video = getMainVideo();
-    if (!video || !rect) return false;
-    const v = video.getBoundingClientRect();
-    return !(rect.right < v.left || rect.left > v.right || rect.bottom < v.top || rect.top > v.bottom);
+    return !!videoAtRect(rect);
   }
 
   // Reutilizat în toate popover-urile de editare: câmpuri De la/Până la (h:mm:ss).
   // Apar dacă adnotarea are deja un interval, SAU dacă e poziționată peste video —
   // caz în care poți adăuga unul acum, chiar dacă n-a fost creată cu "Legat de video".
   function buildVideoRangeFields(ann, targetEl) {
-    const video = getMainVideo();
+    const under = videoAtRect(targetEl?.getBoundingClientRect?.());
     const hadRange = !!ann.data.videoRange;
-    if (!hadRange) {
-      if (!video || !isOverVideo(targetEl?.getBoundingClientRect?.())) return null;
-    }
+    if (!hadRange && !under) return null;
+    const video = under || videoFor(ann);
     const defStart = ann.data.videoRange?.start ?? Math.round(video?.currentTime || 0);
     const defEnd = ann.data.videoRange?.end ?? defStart + 2;
     const startInput = el("input", { type: "text", placeholder: "h:mm:ss", value: formatTime(defStart) });
@@ -1306,7 +1302,12 @@
       "div",
       { class: "wa-popover", style: `top:${Math.max(top, 8)}px; left:${Math.max(left, 8)}px;` },
       ...rangeFields.fields,
-      el("div", { class: "wa-actions" }, el("button", { class: "wa-submit" }, "Salvează intervalul"))
+      el(
+        "div",
+        { class: "wa-actions" },
+        el("button", { class: "wa-cancel", onclick: () => popover.remove() }, ann.data.videoRange ? "Anulează" : "Mereu vizibil"),
+        el("button", { class: "wa-submit" }, "Salvează intervalul")
+      )
     );
 
     popover.querySelector(".wa-submit").onclick = async () => {
@@ -1324,6 +1325,17 @@
 
     uiHost().appendChild(popover);
     clampToViewport(popover);
+  }
+
+  // Imediat după ce ai dat OK pe o adnotare nouă făcută peste un video: video-ul se
+  // oprește și apare lângă ea formularul De la/Până la (acum → +2 s), ca să alegi de la
+  // început cât timp se vede. „Mereu vizibil” o lasă fără interval.
+  function offerVideoRange(ann) {
+    const domEl = state.annotations.get(ann.id)?.el;
+    const rect = domEl?.getBoundingClientRect();
+    if (!rect || !videoAtRect(rect)) return;
+    pauseVideoIfPlaying();
+    openRangeOnlyEditor(ann, domEl, rect.right, rect.top);
   }
 
   function openStyleEditor(ann, targetEl, clientX, clientY) {
@@ -1584,7 +1596,7 @@
     if (!state.rankVisible.has(entry.ann.id) && !mine && !state.revealed.has(entry.ann.id)) filtered = true;
     const range = entry.ann.data?.videoRange;
     if (range) {
-      const video = getMainVideo();
+      const video = videoFor(entry.ann);
       const t = video ? video.currentTime : 0;
       if (t < range.start || t > range.end) filtered = true;
     }
@@ -1884,7 +1896,7 @@
   const pendingVideoWire = [];
 
   function wireVideoRange(ann, domEl, control) {
-    const video = getMainVideo();
+    const video = videoFor(ann);
     if (!video) {
       pendingVideoWire.push({ ann, domEl, control });
       return;
@@ -2103,9 +2115,8 @@
     if (ann.data?.videoRange) return true;
     const sel = ann.data?.anchor?.selector;
     if (!sel) return false;
-    const video = getMainVideo();
     try {
-      return !!video && anchorTarget(ann.data.anchor) === video;
+      return anchorTarget(ann.data.anchor)?.localName === "video";
     } catch {
       return false;
     }
@@ -2243,6 +2254,7 @@
           makeMovable(ann, path, control);
           makeStyleEditableOnDblClick(ann, path);
           registerAnnotation(ann, path, control);
+          offerVideoRange(ann);
         } catch (err) {
           console.error("[Adormis] Nu am putut salva desenul:", err);
           showSaveError("Nu am putut salva desenul — verifică serverul.");
@@ -2424,6 +2436,7 @@
           makeMovable(ann, group, control);
           makeStyleEditableOnDblClick(ann, group);
           registerAnnotation(ann, group, control);
+          offerVideoRange(ann);
         } catch (err) {
           console.error("[Adormis] Nu am putut salva spray-ul:", err);
           showSaveError("Nu am putut salva graffiti-ul — verifică serverul.");
@@ -2690,6 +2703,7 @@
         makeMovable(ann, preview, control);
         makeStyleEditableOnDblClick(ann, preview);
         registerAnnotation(ann, preview, control);
+        offerVideoRange(ann);
       } catch (err) {
         console.error("[Adormis] Nu am putut salva forma:", err);
         showSaveError("Nu am putut salva forma — verifică serverul.");
@@ -2798,6 +2812,7 @@
           authorId: state.userId,
         });
         renderTextAnnotation(ann);
+        offerVideoRange(ann);
       } catch (err) {
         console.error("[Adormis] Nu am putut salva textul:", err);
         showSaveError("Nu am putut salva textul — verifică serverul.");
@@ -2877,6 +2892,7 @@
           authorId: state.userId,
         });
         renderBubbleAnnotation(ann);
+        offerVideoRange(ann);
       } catch (err) {
         console.error("[Adormis] Nu am putut salva bula:", err);
         showSaveError("Nu am putut salva bula — verifică serverul.");
@@ -2999,6 +3015,9 @@
             authorId: state.userId,
           });
           renderLinkAnnotation(ann);
+          popover.remove();
+          offerVideoRange(ann);
+          return;
         }
       } catch (err) {
         console.error("[Adormis] Nu am putut salva link-ul:", err, err?.stack);
@@ -3138,8 +3157,53 @@
     video?.pause();
   }
 
+  // Video-ul „principal”: cel din fullscreen, altfel cel mai mare vizibil în fereastră.
+  // Pe X (și alte feed-uri) sunt multe <video> — primul din DOM e des unul din alt
+  // tweet, ascuns sau derulat afară, și atunci intervalul de timp nu mai apărea.
   function getMainVideo() {
-    return document.querySelector("video");
+    const all = document.querySelectorAll("video");
+    if (all.length <= 1) return all[0] || null;
+    const fs = document.fullscreenElement;
+    if (fs) {
+      const inFs = [...all].find((v) => fs === v || fs.contains(v));
+      if (inFs) return inFs;
+    }
+    let best = null;
+    let bestArea = 0;
+    for (const v of all) {
+      const a = overlapArea(v.getBoundingClientRect(), { left: 0, top: 0, right: innerWidth, bottom: innerHeight });
+      if (a > bestArea) [best, bestArea] = [v, a];
+    }
+    return best || all[0];
+  }
+
+  function overlapArea(a, b) {
+    const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    return w >= 0 && h >= 0 ? Math.max(w, 1) * Math.max(h, 1) : 0;
+  }
+
+  // Video-ul peste care stă un dreptunghi/punct de ecran (cel cu cea mai mare suprapunere).
+  function videoAtRect(rect) {
+    if (!rect) return null;
+    let best = null;
+    let bestArea = 0;
+    for (const v of document.querySelectorAll("video")) {
+      const r = v.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;
+      const a = overlapArea(r, rect);
+      if (a > bestArea) [best, bestArea] = [v, a];
+    }
+    return best;
+  }
+
+  // Video-ul de care ține o adnotare: cel de care e ancorată, altfel cel principal.
+  function videoFor(ann) {
+    let target = null;
+    try {
+      target = ann?.data?.anchor?.selector ? anchorTarget(ann.data.anchor) : null;
+    } catch {}
+    return target?.localName === "video" ? target : getMainVideo();
   }
 
   // Semnal standard pentru "e live": un video la cerere (VOD) are mereu o durată
@@ -3162,9 +3226,8 @@
   // sus pentru motiv (timestamp-uri care nu mai au sens după ce live-ul se termină).
   // Restul paginii (tot ce nu se suprapune cu video-ul) rămâne neatins.
   function isOverLiveVideo(clientX, clientY) {
-    const video = getMainVideo();
-    if (!isLiveVideo(video)) return false;
-    return isOverVideo({ left: clientX, right: clientX, top: clientY, bottom: clientY });
+    const video = videoAtRect({ left: clientX, right: clientX, top: clientY, bottom: clientY });
+    return !!video && isLiveVideo(video);
   }
 
   function showLiveBlocked() {
@@ -3174,8 +3237,7 @@
   // Oprește video-ul de fiecare dată când intri în editare (dublu-click), ca să nu
   // treacă de intervalul pe care-l editezi cât timp te uiți la formular.
   function pauseVideoIfPlaying() {
-    const video = getMainVideo();
-    if (video && !video.paused) pauseVideo(video);
+    document.querySelectorAll("video").forEach((video) => !video.paused && pauseVideo(video));
   }
 
   // Unealta dedicată "Bulă video" a fost scoasă — era un duplicat al Bulă + "Legat de
@@ -3810,7 +3872,7 @@
     const isVideoAnn = !!ann.data?.videoRange;
 
     if (isVideoAnn) {
-      const video = getMainVideo();
+      const video = videoFor(ann);
       seekVideo(video, ann.data.videoRange.start);
       // Adnotările legate de video rămân vizibile și în fullscreen (vezi
       // enterVideoFullscreen) — nu are rost s-o scoatem pe utilizator de-acolo.
@@ -4028,7 +4090,7 @@
     // temporare (bara de control, gradientul de hover) care dispar/reapar, și dacă
     // ANCORA ar fi unul din ele, la resize elementul poate lipsi și adnotarea rămâne
     // blocată pe poziția veche cât timp restul paginii se mișcă.
-    const video = getMainVideo();
+    const video = videoAtRect({ left: clientX, right: clientX, top: clientY, bottom: clientY });
     if (video) {
       const vRect = mediaContentRect(video);
       const overVideo =
