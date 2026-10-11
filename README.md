@@ -47,6 +47,8 @@ Endpoint-uri disponibile:
 - `POST /api/admin/users/:authorHash/set-name` — `{name}`: moderatorul dă un nume, inclusiv unul
   rezervat (ex. „Adormis” pentru proprietar); tot unic
 - `POST /api/admin/users/:authorHash/reset-name` — moderatorul șterge un nume nepotrivit
+- `POST /api/admin/users/:authorHash/delete` — moderatorul șterge un utilizator: adnotările lui, voturile și raportările date (scorurile se corectează), numele/contul
+- `GET /api/admin/backup` — descarcă o copie a bazei de date (privată: conține ID-urile secrete și hash-urile parolelor)
 - `POST /api/users/me` — `{authorId}` → `{name, hasPassword}`
 - `POST /api/users/password` — `{authorId, password}` (min. 8): creează contul / schimbă parola;
   cere un nume ales (= numele de utilizator); parola doar ca hash scrypt

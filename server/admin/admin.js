@@ -95,6 +95,7 @@ const userLabel = (u) => u.name || `Utilizator ${u.hash.slice(0, 4).toUpperCase(
 function userCard(u) {
   const actions = el("div", { class: "actions" }, el("button", { "data-act": "anns" }, `Vezi adnotările (${u.visible})`));
   if (u.name) actions.append(el("button", { "data-act": "reset-name" }, `Resetează numele „${u.name}”`));
+  actions.append(el("button", { "data-act": "delete-user", class: "danger" }, "Șterge utilizatorul"));
   const anns = el("ul", { class: "user-anns" });
   const c = el(
     "article",
@@ -118,6 +119,17 @@ function userCard(u) {
     const act = e.target.dataset?.act;
     if (!act) return;
     try {
+      if (act === "delete-user") {
+        // a doua apăsare confirmă (fără dialog de browser)
+        if (!e.target.dataset.armed) {
+          e.target.dataset.armed = "1";
+          e.target.textContent = `Sigur? Se șterg ${plural(u.annotations, "adnotare", "adnotări")} și ${plural(u.votes, "vot", "voturi")} — apasă din nou`;
+          return;
+        }
+        const r = await api(`/users/${u.hash}/delete`, {});
+        $("#msg").textContent = `${userLabel(u)} a fost șters (${plural(r.annotations, "adnotare", "adnotări")}, ${plural(r.votes, "vot", "voturi")}, ${plural(r.reports, "raportare", "raportări")}).`;
+        return load();
+      }
       if (act === "reset-name") {
         await api(`/users/${u.hash}/reset-name`, {});
         $("#msg").textContent = "Numele a fost resetat.";

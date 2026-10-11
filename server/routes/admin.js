@@ -3,7 +3,7 @@
 // ca „Authorization: Bearer …”). Fără ADMIN_TOKEN setat, toată zona răspunde 404.
 const crypto = require("node:crypto");
 const express = require("express");
-const { db, REPORT_HIDE_THRESHOLD, displayNameFor, nameKey, collectUsers } = require("../db");
+const { db, REPORT_HIDE_THRESHOLD, displayNameFor, nameKey, collectUsers, sha256Hex } = require("../db");
 
 const router = express.Router();
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
@@ -141,6 +141,66 @@ router.post("/users/:hash/reset-name", (req, res) => {
   }
   db.prepare("DELETE FROM users WHERE author_hash = ?").run(req.params.hash);
   res.json({ ok: true });
+});
+
+// GET /api/admin/backup — copie consistentă a bazei de date (VACUUM INTO într-un fișier
+// temporar), descărcată ca annotations-AAAA-LL-ZZ.db. Conține secretele utilizatorilor
+// (author_id, hash-uri de parolă) — se păstrează privat.
+router.get("/backup", (_req, res) => {
+  const os = require("node:os");
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const file = path.join(os.tmpdir(), `adormis-backup-${process.pid}-${Date.now()}.db`);
+  db.exec(`VACUUM INTO '${file}'`);
+  const day = new Date().toISOString().slice(0, 10);
+  res.download(file, `annotations-${day}.db`, () => fs.rm(file, { force: true }, () => {}));
+});
+
+// POST /api/admin/users/:hash/delete — șterge utilizatorul cu tot ce a lăsat: adnotările (și
+// voturile/raportările primite de ele), voturile și raportările date (scorurile și contoarele
+// adnotărilor afectate se corectează), numele și contul. Adnotările scoase de moderator rămân
+// înregistrate, cu motivul (DSA), până la ștergerea lor automată.
+// Nu blochează nimic: dacă omul folosește extensia din nou, apare ca utilizator nou.
+router.post("/users/:hash/delete", (req, res) => {
+  const hash = req.params.hash;
+  if (!/^[0-9a-f]{32}$/.test(hash)) return res.status(400).json({ error: "ID public invalid (32 de caractere hex)" });
+  const short = (id) => sha256Hex(id).slice(0, 32);
+  // ID-urile secrete ale utilizatorului (voturile și raportările sunt ținute după ele, nu după hash)
+  const ids = new Set(db.prepare("SELECT DISTINCT author_id FROM annotations WHERE author_hash = ?").all(hash).map((r) => r.author_id));
+  const account = db.prepare("SELECT author_id FROM users WHERE author_hash = ?").get(hash);
+  if (account?.author_id) ids.add(account.author_id);
+  for (const r of db.prepare("SELECT DISTINCT voter_id AS id FROM votes UNION SELECT DISTINCT reporter_id FROM reports").all())
+    if (short(r.id) === hash) ids.add(r.id);
+
+  const done = { annotations: 0, votes: 0, reports: 0, name: false };
+  db.exec("BEGIN");
+  try {
+    for (const id of ids) {
+      for (const v of db.prepare("SELECT annotation_id, direction FROM votes WHERE voter_id = ?").all(id)) {
+        db.prepare("UPDATE annotations SET votes = votes - ? WHERE id = ?").run(v.direction === "up" ? 1 : -1, v.annotation_id);
+        done.votes++;
+      }
+      db.prepare("DELETE FROM votes WHERE voter_id = ?").run(id);
+      for (const r of db.prepare("SELECT annotation_id FROM reports WHERE reporter_id = ?").all(id)) {
+        db.prepare("UPDATE annotations SET reports = MAX(reports - 1, 0) WHERE id = ?").run(r.annotation_id);
+        done.reports++;
+      }
+      db.prepare("DELETE FROM reports WHERE reporter_id = ?").run(id);
+    }
+    const own = db.prepare("SELECT id FROM annotations WHERE author_hash = ? AND removed_at IS NULL").all(hash);
+    for (const a of own) {
+      db.prepare("DELETE FROM votes WHERE annotation_id = ?").run(a.id);
+      db.prepare("DELETE FROM reports WHERE annotation_id = ?").run(a.id);
+      db.prepare("DELETE FROM annotations WHERE id = ?").run(a.id);
+    }
+    done.annotations = own.length;
+    done.name = db.prepare("DELETE FROM users WHERE author_hash = ?").run(hash).changes > 0;
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+  res.json({ ok: true, ...done });
 });
 
 module.exports = router;
