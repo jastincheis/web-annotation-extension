@@ -34,6 +34,14 @@
     return res.json();
   }
 
+  // Eroare cu mesajul serverului; needAccount = funcție doar pentru cei cu cont (403).
+  async function apiError(res, fallback) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.error || `${fallback} (${res.status})`);
+    err.needAccount = !!body.needAccount;
+    return err;
+  }
+
   async function createAnnotation({ url, type, data, authorId }) {
     const b = await base();
     const res = await fetch(`${b}/api/annotations`, {
@@ -41,7 +49,7 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, type, data, authorId }),
     });
-    if (!res.ok) throw new Error(`Creare eșuată (${res.status})`);
+    if (!res.ok) throw await apiError(res, "Creare eșuată");
     return res.json();
   }
 
@@ -53,7 +61,7 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ authorId, patch }),
     });
-    if (!res.ok) throw new Error(`Editare eșuată (${res.status})`);
+    if (!res.ok) throw await apiError(res, "Editare eșuată");
     return res.json();
   }
 

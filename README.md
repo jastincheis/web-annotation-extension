@@ -6,7 +6,8 @@ raportare. Construit după specificația din `Web Chrome Extension.odt`.
 
 **Ce NU e inclus în acest MVP** (rămâne pentru o fază ulterioară, dacă vrei):
 NFT-uri, wallet/ENS, blockchain, marketplace, login Gmail + reCAPTCHA, moderare AI.
-Momentan oricine poate crea/vota/raporta anonim (id local generat automat).
+Oricine poate vedea, vota și raporta cu un id local generat automat; fără cont (nume + parolă)
+poate face cel mult 3 adnotări pe zi și fără linkuri, cu cont — totul.
 
 ## Structură
 
@@ -49,7 +50,7 @@ Endpoint-uri disponibile:
 - `POST /api/admin/users/:authorHash/reset-name` — moderatorul șterge un nume nepotrivit
 - `POST /api/admin/users/:authorHash/delete` — moderatorul șterge un utilizator: adnotările lui, voturile și raportările date (scorurile se corectează), numele/contul
 - `GET /api/admin/backup` — descarcă o copie a bazei de date (privată: conține ID-urile secrete și hash-urile parolelor)
-- `POST /api/users/me` — `{authorId}` → `{name, hasPassword}`
+- `POST /api/users/me` — `{authorId}` → `{name, hasPassword, freeLeft}` (`freeLeft` = câte adnotări mai poate face azi cine n-are cont; `null` cu cont)
 - `POST /api/users/password` — `{authorId, password}` (min. 8): creează contul / schimbă parola;
   cere un nume ales (= numele de utilizator); parola doar ca hash scrypt
 - `POST /api/users/login` — `{name, password, currentAuthorId?}` → `{authorId, hash, name}`;
@@ -66,6 +67,7 @@ Endpoint-uri disponibile:
   `{global: {total, byType, withLink, pages, users}, page: {total, byType, withLink}}`
   (`users` = câți au scris, votat, raportat sau și-au ales nume; `page` doar dacă e dată pagina; partea globală are cache 30s)
 - `POST /api/annotations` — creează `{url, type, data, authorId}`
+  - fără cont (nume + parolă): cel mult 3 adnotări în 24 h și fără linkuri → `403 {error, needAccount: true}` (la fel `PATCH` cu `url`)
 - `PATCH /api/annotations/:id` — `{authorId, patch}` (mutare sau editare text/link; doar autorul)
 - `DELETE /api/annotations/:id` — `{authorId}` (doar autorul își poate șterge propria adnotare)
 - `authorId` e secretul autorului (generat local de extensie): nu apare în niciun răspuns —

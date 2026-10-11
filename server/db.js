@@ -203,4 +203,29 @@ function ipHash(ip) {
   return crypto.createHmac("sha256", IP_HASH_SECRET).update(String(ip || "")).digest("hex").slice(0, 32);
 }
 
-module.exports = { collectUsers, db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash, nameKey, displayNameFor };
+// Niveluri: cine are cont (nume + parolă) folosește totul; fără cont — cel mult
+// FREE_DAILY_LIMIT adnotări în ultimele 24 h, fără linkuri și fără chat.
+const FREE_DAILY_LIMIT = 3;
+function hasAccount(hash) {
+  return !!db.prepare("SELECT 1 FROM users WHERE author_hash = ? AND password_hash IS NOT NULL").get(hash);
+}
+function freeAnnotationsLeft(hash) {
+  const { n } = db
+    .prepare("SELECT COUNT(*) AS n FROM annotations WHERE author_hash = ? AND created_at > ?")
+    .get(hash, Date.now() - 24 * 60 * 60 * 1000);
+  return Math.max(FREE_DAILY_LIMIT - n, 0);
+}
+
+module.exports = {
+  collectUsers,
+  db,
+  REPORT_HIDE_THRESHOLD,
+  VISIBLE,
+  sha256Hex,
+  ipHash,
+  nameKey,
+  displayNameFor,
+  FREE_DAILY_LIMIT,
+  hasAccount,
+  freeAnnotationsLeft,
+};

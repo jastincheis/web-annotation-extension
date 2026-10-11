@@ -4,7 +4,7 @@
 // să nu poată fi purtate de doi oameni diferiți.
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { db, nameKey, displayNameFor } = require("../db");
+const { db, nameKey, displayNameFor, freeAnnotationsLeft } = require("../db");
 const crypto = require("node:crypto");
 
 const router = express.Router();
@@ -102,8 +102,10 @@ const validPassword = (v) => typeof v === "string" && v.length >= 8 && v.length 
 router.post("/me", (req, res) => {
   const { authorId } = req.body || {};
   if (!validId(authorId)) return res.status(400).json({ error: "Missing authorId" });
-  const row = db.prepare("SELECT name, password_hash FROM users WHERE author_hash = ?").get(authorHash(authorId));
-  res.json({ name: row?.name || null, hasPassword: !!row?.password_hash });
+  const hash = authorHash(authorId);
+  const row = db.prepare("SELECT name, password_hash FROM users WHERE author_hash = ?").get(hash);
+  // freeLeft = câte adnotări mai poate face azi cine n-are cont (null = nelimitat)
+  res.json({ name: row?.name || null, hasPassword: !!row?.password_hash, freeLeft: row?.password_hash ? null : freeAnnotationsLeft(hash) });
 });
 
 // POST /api/users/password  { authorId, password } — creează contul (sau schimbă parola).

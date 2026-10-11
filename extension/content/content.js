@@ -24,6 +24,9 @@
     names: new Map(), // amprentă autor -> numele lui afișat (null = fără nume ales), din răspunsurile serverului
     myName: null, // numele tău afișat, dacă ți-ai ales unul — vezi refreshMyName
     hasPassword: false, // ai cont cu parolă (te poți loga și de pe alt calculator)
+    meLoaded: false, // am aflat de la server dacă ai cont (până atunci nu blocăm nimic)
+    freeLeft: null, // fără cont: câte adnotări mai poți face azi (null = nelimitat / necunoscut)
+    accountNoticeShown: false,
     topMode: "page", // panoul Top: "page" (clasamentul paginii) sau "global" (de pe toate paginile)
     mineScope: "page", // panoul de profil: "page" (pagina asta) sau "all" (toate paginile)
     mineQuery: "", // căutarea din panoul de profil
@@ -923,6 +926,11 @@
   }
 
   function setActiveTool(tool) {
+    if (tool === "link" && linkLocked()) return showNeedAccount(LINK_LOCKED_MSG);
+    if (DRAW_TOOLS.has(tool) && tool !== state.activeTool && linkLocked()) {
+      accountNotice();
+      if (state.freeLeft === 0) return;
+    }
     const nextTool = tool === state.activeTool ? null : tool === "select" ? null : tool;
     if (nextTool !== "spray" && pendingToolFinish) {
       // ai schimbat unealta cu o sesiune de spray deschisă — salvăm ce era deja desenat
@@ -1025,7 +1033,7 @@
         popover.remove();
       } catch (err) {
         console.error("[Adormis] Nu am putut salva link-ul:", err);
-        showSaveError("Nu am putut salva link-ul — verifică serverul.");
+        saveFailed(err, "Nu am putut salva link-ul — verifică serverul.");
       }
     };
 
@@ -1168,8 +1176,10 @@
 
     if (canDelete && ann.type !== "link") {
       const linkBtn = el("button", { class: "wa-attach-link", title: "Adaugă / schimbă link" }, "🔗");
+      linkBtn.classList.toggle("wa-locked", linkLocked());
       linkBtn.onclick = (e) => {
         e.stopPropagation();
+        if (linkLocked()) return showNeedAccount(LINK_LOCKED_MSG);
         pauseVideoIfPlaying();
         openAttachLinkForm(ann, e.clientX, e.clientY);
       };
@@ -1202,16 +1212,68 @@
   // pentru toate uneltele, ca utilizatorul să știe DE CE a dispărut, nu doar CĂ a dispărut.
   let saveErrorToast = null;
   let saveErrorTimer = null;
-  function showSaveError(message, { ok = false } = {}) {
+  function showSaveError(message, { ok = false, info = false } = {}) {
     clearTimeout(saveErrorTimer);
     if (!saveErrorToast) {
       saveErrorToast = el("div", { class: "wa-save-error" });
       uiHost().appendChild(saveErrorToast);
     }
-    saveErrorToast.textContent = `${ok ? "✅" : "⚠️"} ${message}`;
+    saveErrorToast.textContent = `${ok ? "✅" : info ? "ℹ️" : "⚠️"} ${message}`;
+    saveErrorToast.classList.remove("wa-need-account");
+    saveErrorToast.classList.toggle("wa-info", info);
     saveErrorToast.classList.toggle("wa-ok", ok);
     saveErrorToast.classList.add("wa-visible");
     saveErrorTimer = setTimeout(() => saveErrorToast?.classList.remove("wa-visible"), 5000);
+  }
+
+  // Funcție doar cu cont: mesajul + butonul „Fă-ți cont”, care deschide „Ale mele” (acolo
+  // se alege numele și se pune parola).
+  function showNeedAccount(message, { info = false } = {}) {
+    showSaveError(message, { info });
+    saveErrorToast.classList.add("wa-need-account");
+    clearTimeout(saveErrorTimer);
+    saveErrorTimer = setTimeout(() => saveErrorToast?.classList.remove("wa-visible", "wa-need-account"), 8000);
+    saveErrorToast.append(
+      " ",
+      el("button", {
+        class: "wa-need-account-btn",
+        onclick: () => {
+          saveErrorToast.classList.remove("wa-visible", "wa-need-account");
+          setMinePanelOpen(true);
+        },
+      }, "Fă-ți cont")
+    );
+  }
+
+  function saveFailed(err, fallback) {
+    if (err?.needAccount) {
+      showNeedAccount(err.message);
+      refreshMyName(); // actualizează câte adnotări mai ai azi
+    } else showSaveError(fallback);
+  }
+
+  // Anunț pentru cine n-are cont, când alege o unealtă de desen (o dată pe pagină, ca să nu
+  // sâcâie): ce poate face fără cont și butonul „Fă-ți cont”. La limită, unealta nu mai pornește.
+  const DRAW_TOOLS = new Set(["pen", "spray", "shape", "bubble", "text"]);
+  function accountNotice() {
+    const left = state.freeLeft;
+    if (left === 0) return showNeedAccount(`Fără cont poți face ${FREE_DAILY_LIMIT} adnotări pe zi — le-ai folosit pe cele de azi.`);
+    if (state.accountNoticeShown) return;
+    state.accountNoticeShown = true;
+    const n = left == null ? FREE_DAILY_LIMIT : left;
+    showNeedAccount(
+      `Fără cont mai poți face ${n === 1 ? "o adnotare" : `${n} adnotări`} azi, fără linkuri. Cu un cont gratuit (nume + parolă) ai totul.`,
+      { info: true }
+    );
+  }
+
+  // Lacăt pe ce e doar pentru cei cu cont (după ce știm sigur că n-ai cont).
+  const LINK_LOCKED_MSG = "Linkurile sunt doar pentru cei cu cont.";
+  const FREE_DAILY_LIMIT = 3; // la fel ca pe server (db.js)
+  const linkLocked = () => state.meLoaded && !state.hasPassword;
+  function refreshLocks() {
+    const locked = linkLocked();
+    document.querySelectorAll('.wa-tool[data-tool="link"], .wa-attach-link').forEach((b) => b.classList.toggle("wa-locked", locked));
   }
 
   // Autorul poate re-edita textul unei adnotări (dublu-click) — funcționează pentru text/bulă.
@@ -1330,6 +1392,12 @@
   // Imediat după ce ai dat OK pe o adnotare nouă făcută peste un video: video-ul se
   // oprește și apare lângă ea formularul De la/Până la (acum → +2 s), ca să alegi de la
   // început cât timp se vede. „Mereu vizibil” o lasă fără interval.
+  // După orice adnotare nouă salvată: contorul „fără cont” + intervalul video.
+  function afterCreate(ann) {
+    if (!state.hasPassword && state.freeLeft > 0) state.freeLeft--;
+    offerVideoRange(ann);
+  }
+
   function offerVideoRange(ann) {
     const domEl = state.annotations.get(ann.id)?.el;
     const rect = domEl?.getBoundingClientRect();
@@ -2254,10 +2322,10 @@
           makeMovable(ann, path, control);
           makeStyleEditableOnDblClick(ann, path);
           registerAnnotation(ann, path, control);
-          offerVideoRange(ann);
+          afterCreate(ann);
         } catch (err) {
           console.error("[Adormis] Nu am putut salva desenul:", err);
-          showSaveError("Nu am putut salva desenul — verifică serverul.");
+          saveFailed(err, "Nu am putut salva desenul — verifică serverul.");
           path.remove();
         }
       }
@@ -2436,10 +2504,10 @@
           makeMovable(ann, group, control);
           makeStyleEditableOnDblClick(ann, group);
           registerAnnotation(ann, group, control);
-          offerVideoRange(ann);
+          afterCreate(ann);
         } catch (err) {
           console.error("[Adormis] Nu am putut salva spray-ul:", err);
-          showSaveError("Nu am putut salva graffiti-ul — verifică serverul.");
+          saveFailed(err, "Nu am putut salva graffiti-ul — verifică serverul.");
           group.remove();
         }
       }
@@ -2703,10 +2771,10 @@
         makeMovable(ann, preview, control);
         makeStyleEditableOnDblClick(ann, preview);
         registerAnnotation(ann, preview, control);
-        offerVideoRange(ann);
+        afterCreate(ann);
       } catch (err) {
         console.error("[Adormis] Nu am putut salva forma:", err);
-        showSaveError("Nu am putut salva forma — verifică serverul.");
+        saveFailed(err, "Nu am putut salva forma — verifică serverul.");
         preview?.remove();
       }
       resetState();
@@ -2812,10 +2880,10 @@
           authorId: state.userId,
         });
         renderTextAnnotation(ann);
-        offerVideoRange(ann);
+        afterCreate(ann);
       } catch (err) {
         console.error("[Adormis] Nu am putut salva textul:", err);
-        showSaveError("Nu am putut salva textul — verifică serverul.");
+        saveFailed(err, "Nu am putut salva textul — verifică serverul.");
       }
     };
     confirmBar.querySelector(".wa-spray-cancel").onclick = () => cleanup();
@@ -2892,10 +2960,10 @@
           authorId: state.userId,
         });
         renderBubbleAnnotation(ann);
-        offerVideoRange(ann);
+        afterCreate(ann);
       } catch (err) {
         console.error("[Adormis] Nu am putut salva bula:", err);
-        showSaveError("Nu am putut salva bula — verifică serverul.");
+        saveFailed(err, "Nu am putut salva bula — verifică serverul.");
       }
     };
     confirmBar.querySelector(".wa-spray-cancel").onclick = () => cleanup();
@@ -3016,12 +3084,12 @@
           });
           renderLinkAnnotation(ann);
           popover.remove();
-          offerVideoRange(ann);
+          afterCreate(ann);
           return;
         }
       } catch (err) {
         console.error("[Adormis] Nu am putut salva link-ul:", err, err?.stack);
-        showSaveError("Nu am putut salva link-ul — verifică serverul.");
+        saveFailed(err, "Nu am putut salva link-ul — verifică serverul.");
       }
       popover.remove();
     };
@@ -3436,6 +3504,9 @@
       const me = await WA_Api.getMe(state.userId);
       state.myName = me.name || null;
       state.hasPassword = !!me.hasPassword;
+      state.freeLeft = me.freeLeft ?? null;
+      state.meLoaded = true;
+      refreshLocks();
     } catch {}
     if (state.myPanelOpen) renderMineHeader();
   }
@@ -3695,6 +3766,7 @@
         if (pass.value !== pass2.value) return fail("Parolele nu sunt la fel.");
         await WA_Api.setPassword(state.userId, pass.value);
         state.hasPassword = true;
+        refreshLocks();
         renderMineHeader();
         showSaveError(`Cont creat: intră de pe alt calculator cu „${state.myName}” și parola.`, { ok: true });
       } catch (err) {

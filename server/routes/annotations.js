@@ -1,7 +1,7 @@
 const crypto = require("node:crypto");
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash, displayNameFor, collectUsers } = require("../db");
+const { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash, displayNameFor, collectUsers, FREE_DAILY_LIMIT, hasAccount, freeAnnotationsLeft } = require("../db");
 
 // Pagina se identifică prin amprenta adresei (?urlHash=, 64 hex) — varianta nouă, care nu
 // trimite adresa. ?url= rămâne doar pentru extensiile încă neactualizate (≤ 0.2.3).
@@ -229,6 +229,11 @@ router.post("/mine", (req, res) => {
   res.json(rows.map(serialize));
 });
 
+// Funcție rezervată celor cu cont: 403 + needAccount, ca extensia să arate „Fă-ți cont”.
+function needAccount(res, error) {
+  return res.status(403).json({ error, needAccount: true });
+}
+
 // POST /api/annotations  { url, type, data, authorId }
 router.post("/", writeLimiter, (req, res) => {
   const { url, type, data, authorId } = req.body || {};
@@ -241,6 +246,12 @@ router.post("/", writeLimiter, (req, res) => {
   const invalid = validateAnnotation(type, data);
   if (invalid) return res.status(400).json({ error: invalid });
   if (!isStr(url, 3000) || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "Adresă de pagină invalidă" });
+  if (!hasAccount(authorHash(authorId))) {
+    if (type === "link" || data.url) return needAccount(res, "Linkurile sunt doar pentru cei cu cont.");
+    if (!freeAnnotationsLeft(authorHash(authorId))) {
+      return needAccount(res, `Fără cont poți face ${FREE_DAILY_LIMIT} adnotări pe zi — ai ajuns la limită.`);
+    }
+  }
 
   const id = crypto.randomUUID();
   const createdAt = Date.now();
@@ -270,6 +281,7 @@ router.patch("/:id", writeLimiter, (req, res) => {
     return res.status(403).json({ error: "Only the original author can edit this annotation" });
   }
 
+  if (patch.url && !hasAccount(row.author_hash)) return needAccount(res, "Linkurile sunt doar pentru cei cu cont.");
   const data = { ...JSON.parse(row.data), ...patch };
   if (hasUnsafeLink(data)) {
     return res.status(400).json({ error: "Link must start with http:// or https://" });
