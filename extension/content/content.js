@@ -4391,6 +4391,7 @@
   const chat = {
     open: false, since: 0, timer: null, box: null, ids: new Set(), canWrite: false, blocked: false, busy: false,
     // vizionare împreună
+    annRev: null, // „versiunea” adnotărilor paginii, din interogarea chatului
     here: [], follow: null, followName: "", left: null, missing: 0, followers: 0, offset: 0, ignoreUntil: 0, lastGesture: 0,
   };
 
@@ -4530,7 +4531,61 @@
   setInterval(() => document.visibilityState === "visible" && refreshChatBadge(), CHAT_BADGE_MS);
   document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refreshChatBadge());
 
+  // Adnotări noi/șterse de alții cât ai chatul deschis: interogarea chatului aduce „versiunea”
+  // adnotărilor paginii; când se schimbă, le cerem din nou și desenăm doar ce lipsește.
+  // Pentru cele noi ale altora: un anunț cu „Vezi” (sare la minutul lor din video).
+  const ANN_TYPE_NAMES = { pen: "un desen", spray: "un spray", shape: "o formă", bubble: "o bulă", text: "un text", link: "un link" };
+  async function syncAnnotations() {
+    if (!state.annotationsLoaded) return;
+    const key = pageKey();
+    let list;
+    try {
+      list = await WA_Api.listAnnotations(key);
+    } catch {
+      chat.annRev = null; // reîncercăm la următoarea interogare
+      return;
+    }
+    if (key !== pageKey()) return; // între timp s-a schimbat pagina
+    const ids = new Set(list.map((a) => a.id));
+    state.annotations.forEach((entry, id) => {
+      if (!ids.has(id) && entry.ann?.authorHash !== state.userHash) removeAnnotation(id);
+    });
+    const fresh = list.filter((a) => !state.annotations.has(a.id));
+    if (!fresh.length) return;
+    fresh.forEach(renderAnnotation);
+    // cele noi ale altora se văd chiar dacă n-ar intra în Top 10 al paginii (un om = o adnotare)
+    fresh.forEach((a) => a.authorHash !== state.userHash && state.revealed.add(a.id));
+    sizeLayers();
+    repositionAnchoredAnnotations();
+    refreshCounter();
+    refreshRanking();
+    if (state.myPanelOpen) renderMineList();
+    const theirs = fresh.filter((a) => a.authorHash !== state.userHash);
+    if (theirs.length) announceAnnotation(theirs[theirs.length - 1], theirs.length);
+  }
+
+  function announceAnnotation(ann, count) {
+    const range = ann.data?.videoRange;
+    const what = count > 1 ? `${count} adnotări noi` : ANN_TYPE_NAMES[ann.type] || "o adnotare";
+    showSaveError(`${authorLabel(ann.authorHash)} a pus ${what}${range ? ` la ${formatTime(range.start).replace(/^0:0?/, "")}` : ""}.`, { info: true });
+    clearTimeout(saveErrorTimer);
+    saveErrorTimer = setTimeout(() => saveErrorToast?.classList.remove("wa-visible"), 10000);
+    saveErrorToast.append(
+      " ",
+      el("button", {
+        class: "wa-need-account-btn",
+        onclick: () => {
+          saveErrorToast.classList.remove("wa-visible");
+          // sărind la minutul ei ieși din „Sync” (altfel sincronizarea te-ar trage înapoi)
+          if (range && chat.follow) stopFollow("Ai ieșit din sincronizare ca să vezi adnotarea — apasă Sync ca să revii.", true);
+          locateMine(ann); // derulează video-ul / pagina la ea și o face să clipească
+        },
+      }, "Vezi")
+    );
+  }
+
   function resetChat() {
+    chat.annRev = null;
     setChatBadge(0);
     refreshChatBadge();
     stopFollow(); // alt video = altă cameră
@@ -4569,6 +4624,11 @@
         if (!els.chatList.querySelector(".wa-chat-empty")) els.chatList.append(el("div", { class: "wa-chat-empty" }, "Niciun mesaj în ultimele 24 de ore. Începe tu!"));
       } else els.chatList.querySelector(".wa-chat-empty")?.remove();
       if (atBottom || r.messages.length) els.chatList.scrollTop = els.chatList.scrollHeight;
+      if (r.annRev && r.annRev !== chat.annRev) {
+        const first = chat.annRev === null;
+        chat.annRev = r.annRev;
+        if (!first) syncAnnotations();
+      }
       const names = r.here.filter((h) => h.name).map((h) => (h.hash === state.userHash ? `${h.name} (tu)` : h.name));
       els.chatHere.textContent = `👥 ${r.here.length}`;
       setChatBadge(r.hereCount ?? r.here.length);

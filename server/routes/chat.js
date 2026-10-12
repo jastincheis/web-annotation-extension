@@ -5,7 +5,7 @@
 const crypto = require("node:crypto");
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { db, sha256Hex, ipHash, displayNameFor, hasAccount } = require("../db");
+const { db, VISIBLE: ANN_VISIBLE, sha256Hex, ipHash, displayNameFor, hasAccount } = require("../db");
 
 const router = express.Router();
 
@@ -144,8 +144,12 @@ router.post("/poll", (req, res) => {
     followers: followers.get(r.author_hash) || 0,
   }));
   const hereCount = countHere(urlHash, now);
+  // „Versiunea” adnotărilor paginii (câte + cea mai nouă): când se schimbă, extensia își
+  // reîncarcă adnotările — așa le vezi pe ale celorlalți fără refresh, cât ai chatul deschis.
+  const ann = db.prepare(`SELECT COUNT(*) AS n, MAX(created_at) AS m FROM annotations WHERE url_hash = ? AND ${ANN_VISIBLE}`).get(urlHash);
+  const annRev = `${ann.n}:${ann.m || 0}`;
   const canWrite = !!me && hasAccount(me) && !db.prepare("SELECT 1 FROM chat_blocks WHERE author_hash = ?").get(me);
-  res.json({ messages: rows.map(serialize), alive, here, hereCount, canWrite, blocked: !!me && !!db.prepare("SELECT 1 FROM chat_blocks WHERE author_hash = ?").get(me), now });
+  res.json({ messages: rows.map(serialize), alive, here, hereCount, annRev, canWrite, blocked: !!me && !!db.prepare("SELECT 1 FROM chat_blocks WHERE author_hash = ?").get(me), now });
 });
 
 // POST /api/chat  { urlHash, authorId, text } — scrie un mesaj (doar cu cont, dacă nu ești blocat).

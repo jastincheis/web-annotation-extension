@@ -51,7 +51,7 @@ Endpoint-uri disponibile:
 - `POST /api/admin/users/:authorHash/delete` — moderatorul șterge un utilizator: adnotările lui, voturile și raportările date (scorurile se corectează), numele/contul
 - `GET /api/admin/backup` — descarcă o copie a bazei de date (privată: conține ID-urile secrete și hash-urile parolelor)
 - Roluri în /admin: `ADMIN_TOKEN` = proprietar; tokenuri pe persoană create din tabul Moderatori (`GET/POST /api/admin/tokens`, `POST /api/admin/tokens/:id/revoke`), rol `owner` sau `moderator`. Moderatorul NU poate: șterge utilizatori, reseta parole, da nume rezervate, descărca backup-ul, gestiona tokenuri, vedea jurnalul. `GET /api/admin/me` → `{name, role}`; `GET /api/admin/log` — jurnalul acțiunilor (proprietar). În baza de date stă doar SHA-256 al tokenului.
-- `POST /api/chat/poll` — `{urlHash, authorId?, since?, video?: {t, paused}, follows?}` → mesajele camerei (ultimele 24 h), `alive` (id-urile încă vizibile), `here` (cine are chatul deschis în ultimele 30 s, cu `video` = minutul din video, `follows` și `followers` pentru vizionarea împreună), `hereCount` (câți sunt în chat, fără plafon), `canWrite`, `blocked`, `now`
+- `POST /api/chat/poll` — `{urlHash, authorId?, since?, video?: {t, paused}, follows?}` → mesajele camerei (ultimele 24 h), `alive` (id-urile încă vizibile), `here` (cine are chatul deschis în ultimele 30 s, cu `video` = minutul din video, `follows` și `followers` pentru vizionarea împreună), `hereCount` (câți sunt în chat, fără plafon), `annRev` (se schimbă când apar/dispar adnotări pe pagină), `canWrite`, `blocked`, `now`
 - `POST /api/chat/here` — `{urlHash, exclude?}` → `{count}`: câți au chatul deschis acum (cifra de pe butonul de chat); `exclude` = amprenta ta, ca să nu te numeri
 - `POST /api/chat` — `{urlHash, authorId, text}`: mesaj nou (doar cu cont, ≤ 300 caractere, 6/minut, 1 la 2 s)
 - `DELETE /api/chat/:id` — `{authorId}`: autorul își șterge mesajul
@@ -68,7 +68,7 @@ Endpoint-uri disponibile:
   lui vizibile de pe toate paginile, după voturi (apoi vechime), max. 500
 - `POST /api/annotations/mine` — `{authorId}`: toate adnotările autorului, de pe toate
   paginile (panoul „Ale mele → Toate”), cele mai noi primele, max. 500
-- `GET /api/annotations/top?limit=10` — cele mai votate adnotări de pe toate paginile
+- `GET /api/annotations/top?limit=10` — cele mai votate adnotări de pe toate paginile; cu `&v=<versiune>` → `{v, items}` sau doar `{v, same: true}` dacă Topul nu s-a schimbat de la versiunea aceea
   (min. 1 vot, `limit` max. 50, cache 10s)
 - `GET /api/annotations/stats?urlHash=<sha256(url)>` — numărul de adnotări pe tipuri:
   `{global: {total, byType, withLink, pages, users}, page: {total, byType, withLink}}`

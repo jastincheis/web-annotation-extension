@@ -134,7 +134,7 @@ router.get("/", (req, res) => {
 // uită sau nu. Cu multe tab-uri deschise simultan (campanie de promovare = exact
 // scenariul), rezultatul e IDENTIC pentru toată lumea și nu are rost să lovim baza
 // de date de fiecare dată — 10s de întârziere pe un clasament global e nesesizabil.
-const topCache = new Map(); // limit -> { data, expiresAt }
+const topCache = new Map(); // limit -> { data, v, expiresAt }
 const TOP_CACHE_TTL_MS = 10_000;
 
 // GET /api/annotations/stats?urlHash=<sha256> — câte adnotări sunt, pe tipuri: global (toate
@@ -180,10 +180,14 @@ router.get("/stats", (req, res) => {
 router.get("/top", (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
 
+  // Cu ?v=<versiune>: extensia are deja Topul acela → răspundem doar { v, same: true } (câțiva
+  // bytes în loc de ~20 KB la fiecare 30 s, pe fiecare tab). Fără v (extensii vechi): lista, ca înainte.
+  const reply = ({ data, v }) => {
+    if (req.query.v === undefined) return res.json(data);
+    res.json(req.query.v === v ? { v, same: true } : { v, items: data });
+  };
   const cached = topCache.get(limit);
-  if (cached && cached.expiresAt > Date.now()) {
-    return res.json(cached.data);
-  }
+  if (cached && cached.expiresAt > Date.now()) return reply(cached);
 
   const rows = db
     .prepare(
@@ -195,8 +199,9 @@ router.get("/top", (req, res) => {
     .all(limit);
 
   const data = rows.map(serialize);
-  topCache.set(limit, { data, expiresAt: Date.now() + TOP_CACHE_TTL_MS });
-  res.json(data);
+  const entry = { data, v: crypto.createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 16), expiresAt: Date.now() + TOP_CACHE_TTL_MS };
+  topCache.set(limit, entry);
+  reply(entry);
 });
 
 // GET /api/annotations/by-author/:hash — profilul public al unui utilizator: adnotările lui

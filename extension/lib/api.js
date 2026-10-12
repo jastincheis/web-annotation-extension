@@ -18,11 +18,19 @@
   }
 
   // Top global — cele mai votate adnotări de pe TOATE paginile, nu doar cea curentă.
+  // Ținem minte ultimul Top primit: serverul îl retrimite doar dacă s-a schimbat (altfel { same }).
+  const topSeen = new Map(); // `${server}|${limit}` -> { v, items }
   async function listTopGlobal(limit = 10) {
     const b = await base();
-    const res = await fetch(`${b}/api/annotations/top?limit=${limit}`);
+    const key = `${b}|${limit}`;
+    const seen = topSeen.get(key);
+    const res = await fetch(`${b}/api/annotations/top?limit=${limit}&v=${encodeURIComponent(seen?.v || "")}`);
     if (!res.ok) throw new Error(`Fetch top eșuat (${res.status})`);
-    return res.json();
+    const body = await res.json();
+    if (Array.isArray(body)) return body; // server vechi, fără versiuni
+    if (body.same && seen) return seen.items;
+    topSeen.set(key, { v: body.v, items: body.items || [] });
+    return body.items || [];
   }
 
   // Câte adnotări sunt, pe tipuri: global și (dacă e dat url) pentru pagina dată.
