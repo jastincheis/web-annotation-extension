@@ -1,162 +1,286 @@
-# Adormis — MVP
+# 🖍️ Adormis
 
-Extensie Chrome pentru adnotări vizuale (graffiti, bule cu text, comentarii) pe orice
-pagină web sau video, cu salvare/partajare publică prin backend propriu, votare și
-raportare. Construit după specificația din `Web Chrome Extension.odt`.
+**[English](#english) · [Română](#română)**
 
-**Ce NU e inclus în acest MVP** (rămâne pentru o fază ulterioară, dacă vrei):
-NFT-uri, wallet/ENS, blockchain, marketplace, login Gmail + reCAPTCHA, moderare AI.
-Oricine poate vedea, vota și raporta cu un id local generat automat; fără cont (nume + parolă)
-poate face cel mult 3 adnotări pe zi și fără linkuri, cu cont — totul.
+Draw, write, chat and vote on top of any web page or video — graffiti, speech bubbles,
+links and comments that everyone with the extension can see.
 
-## Structură
+Desenează, scrie, vorbește și votează peste orice pagină web sau video — graffiti, bule,
+linkuri și comentarii pe care le vede oricine are extensia.
 
-```
-web-annotation-extension/
-  extension/     — extensia Chrome (Manifest V3)
-  server/        — backend Node.js + Express + SQLite (node:sqlite, nativ)
-```
+Current version / Versiunea curentă: **0.3.5**
 
-## 1. Pornește backend-ul
+---
+
+## English
+
+### What it is
+
+Adormis is a Chrome extension (Manifest V3) that turns any page or video into a shared
+canvas — even on sites that don't allow comments. Annotations are public: anyone with the
+extension sees them on the same page. The repo contains both the extension and its
+backend (Node.js + Express + SQLite).
+
+### Features
+
+**Drawing and writing**
+- Free pen and graffiti spray (6 kinds: classic, mist, splatter, drips, soft cloud, burst),
+  with adjustable color and size
+- 13 shapes: circle, square, rectangle, triangle, diamond, star, heart, hexagon, cloud,
+  lightning, arrow, double arrow, line
+- Text and speech bubbles — 6 bubble styles (tail left or right) and 6 fonts (Impact,
+  Bangers, Marker, handwriting, typewriter…) — movable, resizable and rotatable
+- Links: on the page or attached to any annotation (checked against URLhaus)
+
+**Video**
+- On YouTube, Netflix, X and other players, annotations are tied to the video and can be
+  limited to a time range (e.g. only between second 20 and 25)
+- Works in fullscreen, toolbar included
+
+**Community**
+- 👍 👎 voting and 🚩 reporting on every annotation
+- Top 10 per page (at most one annotation per user) and a global 🏆 Top
+- Public profile: a unique name and all your annotations from every page
+- **Page chat** — a movable, resizable window to talk with people on the same page or
+  video; the chat button shows how many are there right now; messages vanish after 24 h
+- **Watch together** — in the chat you can sync to someone else's spot in the video
+- Live annotations: new ones appear while the chat is open
+
+**Accounts**
+- Without an account: see everything, read the chat, vote, report and make up to
+  3 annotations a day (no links)
+- With a free account — just a name and a password, no email: everything, including
+  writing in the chat, and the same identity on any computer
+
+**Privacy and safety**
+- Nothing is sent before you give consent on first use; consent can be withdrawn from the
+  extension menu
+- For pages you only view, just a hash of the address is sent, not the address itself
+- Local and internal pages are ignored
+- Reported content goes to a human moderator (DSA-style moderation queue at `/admin`);
+  auto-hiding only counts reports from accounts older than one day
+- Privacy policy: <https://web-annotation-extension-production.up.railway.app/privacy>
+
+### What's new
+
+| Version | Changes |
+|---|---|
+| **0.3.5** | Security fixes after an audit: pages can no longer click Adormis buttons for you; the global Top only counts votes from accounts; stricter limits on new accounts and on free annotations |
+| **0.3.4** | Annotations appear live while the chat is open; the Top is downloaded only when it changes |
+| **0.3.3** | The chat button shows how many people are in the chat |
+| **0.3.2** | Watch together in the chat (sync to another viewer's spot in the video) |
+| **0.3.1** | Tools are picked by hovering the top bar |
+| **0.3.0** | Page chat; moderators with their own tokens and an action log |
+| **0.2.x** | Accounts with name and password, account tiers, public profiles, Top 10, new fonts, bubbles, shapes and sprays, video time ranges, fullscreen, Netflix and X support, moderation and privacy |
+
+The full history is in the git log.
+
+### Install
+
+The extension needs no build step:
+
+1. Open `chrome://extensions`
+2. Turn on **Developer mode** (top right)
+3. **Load unpacked** → choose the `extension/` folder
+4. The 🖍️ icon appears in the extensions bar
+
+It connects by default to the public server on Railway — nothing to configure.
+
+### Usage
+
+- The round button on the right edge of the page (or **Alt+A**, or the extension popup)
+  opens the **dock**, the toolbar at the top. Drag its ⠿ handle to move it (the position is
+  remembered per site; double-click the handle to reset it).
+- Shortcuts while the dock is open: **V** select, **P** pen, **S** spray, **F** shape,
+  **B** bubble, **T** text, **L** link, **Esc** close.
+- The colored dot opens the style of the current tool: color, size, shape, spray kind,
+  bubble style, font.
+- On video, double-click an annotation to set its time range.
+- Next to each annotation: 👍 👎 🚩; its author also sees 🔗 (add a link) and 🗑.
+- 📍 in the dock = your annotations; 🏆 = show/hide the global Top; the chat button = page chat.
+- A page is identified by `origin + pathname + query`, without tracking parameters
+  (`utm_*`, `fbclid`…); on YouTube only `?v=`, on Netflix only `/watch/<id>`.
+
+### Run the backend yourself
 
 ```bash
 cd server
-npm install      # deja rulat; repetă doar dacă ștergi node_modules
-npm start
+npm install
+npm start        # or: npm run dev (auto-restart)
 ```
 
-Ascultă implicit pe `http://localhost:4000`. Baza de date (`annotations.db`) se
-creează automat lângă `server.js`, folosind modulul nativ `node:sqlite` — nu are
-nevoie de compilare (necesită Node ≥ 22.5).
+It listens on `http://localhost:4000`. The database (`annotations.db`) is created
+automatically, using Node's built-in `node:sqlite` — no compiling, but **Node ≥ 22.5**
+is required. Point the extension to it from the popup (“Server address”), then reload the
+page.
 
-Endpoint-uri disponibile:
-- `GET /api/health` — `{ok: true}`
-- `GET /api/version` — conținutul `version.json` (`{latest, notes}`), pentru beculețul de update
-- `GET /api/annotations?urlHash=<sha256(url)>[&minVotes=N]` — listă adnotări pentru o pagină,
-  identificată prin amprenta SHA-256 (hex) a adresei, nu prin adresa în sine
-  (`?url=` mai merge doar pentru extensiile vechi, ≤ 0.2.3). Fără `minVotes` le trimite pe
-  toate; extensia face Top 10 pe pagină cu cel mult o adnotare per utilizator (cea mai bună a
-  lui: scor, apoi vechime) și arată pe pagină doar adnotările din top
-- `GET /api/users/:authorHash` — numele afișat al unui utilizator (`null` dacă nu are)
-- `POST /api/users/name` — `{authorId, name}`: își alege / schimbă numele (gol = îl șterge); unic
-  după o cheie fără majuscule, diacritice, spații și `. _ -` (409 dacă e luat), 2–24 caractere,
-  nume rezervate refuzate (admin…, moderator…, adormis…, utilizator… ca început; tu, mod, staff etc. doar ca nume întreg); max. 10 schimbări/minut. Răspunsurile cu adnotări au `authorName`
-- `GET /api/admin/users` — toți utilizatorii care au scris, votat, raportat sau și-au ales un nume:
-  nume, cont cu parolă, adnotări (și câte vizibile), voturi, raportări, prima/ultima activitate (tab „Utilizatori” din /admin, cu căutare)
-- `POST /api/admin/users/reset-password` — `{name}`: parolă temporară (arătată o singură dată) +
-  numărul și ultimele adnotări ale contului, ca moderatorul să verifice cererea; fără garanție pentru utilizator
-- `POST /api/admin/users/:authorHash/set-name` — `{name}`: moderatorul dă un nume, inclusiv unul
-  rezervat (ex. „Adormis” pentru proprietar); tot unic
-- `POST /api/admin/users/:authorHash/reset-name` — moderatorul șterge un nume nepotrivit
-- `POST /api/admin/users/:authorHash/delete` — moderatorul șterge un utilizator: adnotările lui, voturile și raportările date (scorurile se corectează), numele/contul
-- `GET /api/admin/backup` — descarcă o copie a bazei de date (privată: conține ID-urile secrete și hash-urile parolelor)
-- Roluri în /admin: `ADMIN_TOKEN` = proprietar; tokenuri pe persoană create din tabul Moderatori (`GET/POST /api/admin/tokens`, `POST /api/admin/tokens/:id/revoke`), rol `owner` sau `moderator`. Moderatorul NU poate: șterge utilizatori, reseta parole, da nume rezervate, descărca backup-ul, gestiona tokenuri, vedea jurnalul. `GET /api/admin/me` → `{name, role}`; `GET /api/admin/log` — jurnalul acțiunilor (proprietar). În baza de date stă doar SHA-256 al tokenului.
-- `POST /api/chat/poll` — `{urlHash, authorId?, since?, video?: {t, paused}, follows?}` → mesajele camerei (ultimele 24 h), `alive` (id-urile încă vizibile), `here` (cine are chatul deschis în ultimele 30 s, cu `video` = minutul din video, `follows` și `followers` pentru vizionarea împreună), `hereCount` (câți sunt în chat, fără plafon), `annRev` (se schimbă când apar/dispar adnotări pe pagină), `canWrite`, `blocked`, `now`
-- `POST /api/chat/here` — `{urlHash, exclude?}` → `{count}`: câți au chatul deschis acum (cifra de pe butonul de chat); `exclude` = amprenta ta, ca să nu te numeri
-- `POST /api/chat` — `{urlHash, authorId, text}`: mesaj nou (doar cu cont, ≤ 300 caractere, 6/minut, 1 la 2 s)
-- `DELETE /api/chat/:id` — `{authorId}`: autorul își șterge mesajul
-- `POST /api/chat/:id/report` — `{reporterId, reason}`; la 3 raportări de la conturi mai vechi de o zi mesajul se ascunde (toate ajung la moderator)
-- `GET /api/admin/chat`, `POST /api/admin/chat/:id/remove|restore`, `POST /api/admin/users/:authorHash/chat-block` `{blocked}` — moderarea chatului
-- `POST /api/users/me` — `{authorId}` → `{name, hasPassword, freeLeft}` (`freeLeft` = câte adnotări mai poate face azi cine n-are cont; `null` cu cont)
-- `POST /api/users/password` — `{authorId, password}` (min. 8): creează contul (cel mult 3 conturi noi pe zi de pe același IP) / schimbă parola;
-  cere un nume ales (= numele de utilizator); parola doar ca hash scrypt
-- `POST /api/users/login` — `{name, password, currentAuthorId?}` → `{authorId, hash, name}`;
-  identitatea curentă a calculatorului se mută în cont (adnotări, voturi, raportări); 10 încercări / 15 min
-- `GET /privacy` — politica de confidențialitate (pagină statică din `server/legal`, fără resurse externe);
-  e adresa oficială folosită de extensie și în Chrome Web Store
-- `GET /api/annotations/by-author/:authorHash` — profilul public al unui utilizator: adnotările
-  lui vizibile de pe toate paginile, după voturi (apoi vechime), max. 500
-- `POST /api/annotations/mine` — `{authorId}`: toate adnotările autorului, de pe toate
-  paginile (panoul „Ale mele → Toate”), cele mai noi primele, max. 500
-- `GET /api/annotations/top?limit=10` — cele mai votate adnotări de pe toate paginile, după voturile celor cu cont (`votes` = acel scor); cu `&v=<versiune>` → `{v, items}` sau doar `{v, same: true}` dacă Topul nu s-a schimbat de la versiunea aceea
-  (min. 1 vot, `limit` max. 50, cache 10s)
-- `GET /api/annotations/stats?urlHash=<sha256(url)>` — numărul de adnotări pe tipuri:
-  `{global: {total, byType, withLink, pages, users}, page: {total, byType, withLink}}`
-  (`users` = câți au scris, votat, raportat sau și-au ales nume; `page` doar dacă e dată pagina; partea globală are cache 30s)
-- `POST /api/annotations` — creează `{url, type, data, authorId}`
-  - fără cont (nume + parolă): cel mult 3 adnotări în 24 h și fără linkuri → `403 {error, needAccount: true}` (la fel `PATCH` cu `url`)
-- `PATCH /api/annotations/:id` — `{authorId, patch}` (mutare sau editare text/link; doar autorul)
-- `DELETE /api/annotations/:id` — `{authorId}` (doar autorul își poate șterge propria adnotare)
-- `authorId` e secretul autorului (generat local de extensie): nu apare în niciun răspuns —
-  răspunsurile conțin doar `authorHash` (primele 32 de caractere hex din SHA-256(authorId))
-- `POST /api/annotations/:id/vote` — `{voterId, direction: "up"|"down"}` (un vot pe adnotare
-  per votant; autorul nu-și poate vota adnotările (403); cel mult 5 votanți per adresă IP,
-  amprentată cu `IP_HASH_SECRET` (429 peste)
-- `POST /api/annotations/:id/report` — `{reporterId, reason, details?, goodFaith: true}`;
-  `reason` ∈ `illegal|hate|harassment|personal_data|sexual|spam|copyright|other`; o raportare
-  per raportor și per IP; auto-ascundere la 5 raportări de la conturi mai vechi de o zi, până la verificarea unui moderator (cele fără cont ajung doar în coadă)
-- `GET /api/admin/queue?status=reported|removed`, `POST /api/admin/annotations/:id/remove`
-  `{reason}`, `POST /api/admin/annotations/:id/restore` — moderare, cu
-  `Authorization: Bearer <ADMIN_TOKEN>` (fără CORS); interfața e la `/admin`. Adnotările
-  scoase dispar pentru toți, rămân ca evidență și se șterg definitiv după 2 ani
-- `POST /api/check-url` — `{url}` → `{safe, checked, threats}` (verificare URLhaus;
-  fără `URLHAUS_AUTH_KEY` linkurile trec)
+The full API reference is in [`server/API.md`](server/API.md).
 
-Limite: 120 cereri/minut per IP pe tot API-ul, plus 20/minut pe rutele de scriere.
+### Deploy on Railway (public backend with HTTPS)
 
-## 2. Încarcă extensia în Chrome
+1. railway.com → **New Project** → **Deploy from GitHub repo** (or `railway up` from
+   `server/`).
+2. Set **Root Directory** = `server` in the service settings.
+3. Add a **persistent volume** mounted at `/data` — otherwise the database is lost on every
+   redeploy.
+4. Environment variables:
+   - `DB_PATH` = `/data/annotations.db`
+   - `ADMIN_TOKEN` — owner password for `/admin` (at least 24 characters, e.g.
+     `openssl rand -hex 32`); without it moderation is disabled
+   - `IP_HASH_SECRET` — key for hashing IPs (`openssl rand -hex 32`); without it a new one
+     is generated on every start
+   - `URLHAUS_AUTH_KEY` — free key from auth.abuse.ch for link checking; without it links
+     are not checked
+   - `PORT` is set by Railway automatically
+5. The live server address is `DEFAULT_SERVER_URL` in `extension/background.js`.
+
+### Project structure
+
+```
+extension/   — the Chrome extension (Manifest V3, vanilla JS, no bundler)
+server/      — backend: Node.js + Express + SQLite, moderation page at /admin
+```
+
+### Known limitations
+
+- No AI moderation; reported content is handled by human moderators.
+- Database backups are manual (download from `/admin`).
+- Not on the Chrome Web Store yet — install it as an unpacked extension.
+
+---
+
+## Română
+
+### Ce este
+
+Adormis e o extensie Chrome (Manifest V3) care transformă orice pagină sau video într-o
+pânză comună — chiar și pe site-urile care nu permit comentarii. Adnotările sunt publice:
+oricine are extensia le vede pe aceeași pagină. Repo-ul conține și extensia, și
+backend-ul ei (Node.js + Express + SQLite).
+
+### Ce poți face
+
+**Desen și text**
+- Creion liber și spray graffiti (6 feluri: clasic, ceață, stropi, scurgeri, nor moale,
+  explozie), cu culoare și grosime reglabile
+- 13 forme: cerc, pătrat, dreptunghi, triunghi, romb, stea, inimă, hexagon, nor, fulger,
+  săgeată, săgeată dublă, linie
+- Text și bule — 6 stiluri de bulă (coada în stânga sau în dreapta) și 6 fonturi (Impact,
+  Bangers, Marker, de mână, mașină de scris…) — se mută, se măresc și se rotesc
+- Linkuri: pe pagină sau atașate oricărei adnotări (verificate cu URLhaus)
+
+**Video**
+- Pe YouTube, Netflix, X și alte playere, adnotările se leagă de video și pot apărea doar
+  într-un interval (ex. doar între secunda 20 și 25)
+- Merg și pe tot ecranul, cu tot cu bara de unelte
+
+**Comunitate**
+- Vot 👍 👎 și raportare 🚩 pe fiecare adnotare
+- Top 10 pe fiecare pagină (cel mult o adnotare per utilizator) și 🏆 Top global
+- Profil public: un nume unic și toate adnotările tale, de pe toate paginile
+- **Chat pe pagină** — o fereastră pe care o muți și o mărești, ca să vorbești cu cei de
+  pe aceeași pagină sau același video; butonul de chat arată câți sunt acolo acum;
+  mesajele dispar după 24 de ore
+- **Vizionare împreună** — din chat te poți sincroniza cu locul din video al altcuiva
+- Adnotări live: cele noi apar cât timp chatul e deschis
+
+**Cont**
+- Fără cont: vezi tot, citești chatul, votezi, raportezi și faci până la 3 adnotări pe zi
+  (fără linkuri)
+- Cu un cont gratuit — doar un nume și o parolă, fără email: ai totul, inclusiv scrisul în
+  chat, și ești același utilizator pe orice calculator
+
+**Confidențialitate și siguranță**
+- Nu se trimite nimic înainte de acordul de la prima folosire; acordul se retrage oricând
+  din meniul extensiei
+- Pentru paginile pe care doar le vezi se trimite doar o amprentă (hash) a adresei, nu
+  adresa
+- Paginile locale și interne sunt ignorate
+- Conținutul raportat ajunge la un moderator uman (coadă de moderare DSA la `/admin`);
+  ascunderea automată ține cont doar de raportările conturilor mai vechi de o zi
+- Politica de confidențialitate: <https://web-annotation-extension-production.up.railway.app/privacy>
+
+### Ce e nou
+
+| Versiune | Modificări |
+|---|---|
+| **0.3.5** | Reparații de securitate după un audit: paginile nu mai pot apăsa butoanele Adormis în locul tău; Topul global ține cont doar de voturile celor cu cont; limite mai stricte pentru conturi noi și adnotări gratuite |
+| **0.3.4** | Adnotările apar live cât timp chatul e deschis; Topul se descarcă doar când se schimbă |
+| **0.3.3** | Butonul de chat arată câți sunt în chat |
+| **0.3.2** | Vizionare împreună în chat (sincronizare cu locul din video al altcuiva) |
+| **0.3.1** | Uneltele se aleg la hover pe bara de sus |
+| **0.3.0** | Chat pe pagină; moderatori cu tokenuri proprii și jurnal de acțiuni |
+| **0.2.x** | Cont cu nume și parolă, niveluri cu/fără cont, profil public, Top 10, fonturi, bule, forme și spray-uri noi, intervale pe video, fullscreen, Netflix și X, moderare și confidențialitate |
+
+Istoricul complet e în git log.
+
+### Instalare
+
+Extensia nu are nevoie de build:
 
 1. Deschide `chrome://extensions`
-2. Activează **Developer mode** (colț dreapta sus)
-3. **Load unpacked** → selectează folderul `extension/`
+2. Activează **Developer mode** (dreapta sus)
+3. **Load unpacked** → alege folderul `extension/`
 4. Iconița 🖍️ apare în bara de extensii
 
-## 3. Folosire
+Se conectează implicit la serverul public de pe Railway — nu e nimic de configurat.
+
+### Folosire
 
 - Butonul rotund de pe marginea din dreapta a paginii (sau **Alt+A**, sau popup-ul
-  extensiei) deschide **dock-ul** — bara de unelte de sus. Se mută trăgând de mânerul ⠿
+  extensiei) deschide **dock-ul**, bara de unelte de sus. Se mută trăgând de mânerul ⠿
   (își ține minte locul pe fiecare site; dublu-click pe mâner = înapoi la locul implicit).
-- Unelte și scurtături (cât e deschis dock-ul): **V** selectează, **P** creion, **S** spray,
-  **F** formă (13: cerc, dreptunghi, stea, inimă, nor, fulger, săgeată dublă...), **B** bulă,
-  **T** text, **L** link, **Esc** închide. Bulina colorată deschide stilul uneltei alese:
-  culoare, grosime, formă, 6 feluri de spray (clasic, ceață, stropi, scurgeri, nor moale,
-  explozie), 6 bule (3 cu coada în stânga, 3 în dreapta) și 6 fonturi pentru text și bule
-  (Impact, Bangers, Marker, de mână, mașină de scris — incluse în `extension/fonts/`).
-- Pe YouTube, Netflix și alte video-uri, adnotările se leagă de video și se pot limita la
-  un interval de timp (dublu-click pe adnotare). Merg și în fullscreen, unde se vede și
-  dock-ul.
-- Fiecare adnotare are lângă ea 👍 👎 🚩 (like/dislike/raportează); autorul vede și 🔗
-  (pune un link pe adnotare — apare ca pastilă pe colțul ei) și 🗑.
-- 📍 din dock = adnotările tale de pe pagina curentă; 🏆 = arată / ascunde Topul global.
-- Adnotările sunt publice: oricine cu extensia instalată și configurată spre același
-  server le vede pe aceeași pagină (`origin + pathname + querystring`, fără parametri de
-  urmărire `utm_*`/`fbclid`...; pe YouTube doar `?v=`, pe Netflix doar `/watch/<id>`).
+- Scurtături cât e deschis dock-ul: **V** selectează, **P** creion, **S** spray,
+  **F** formă, **B** bulă, **T** text, **L** link, **Esc** închide.
+- Bulina colorată deschide stilul uneltei alese: culoare, grosime, formă, fel de spray,
+  stil de bulă, font.
+- Pe video, dublu-click pe o adnotare îi setează intervalul de timp.
+- Lângă fiecare adnotare: 👍 👎 🚩; autorul vede și 🔗 (pune un link) și 🗑.
+- 📍 din dock = adnotările tale; 🏆 = arată/ascunde Topul global; butonul de chat = chatul paginii.
+- O pagină e identificată prin `origin + pathname + query`, fără parametri de urmărire
+  (`utm_*`, `fbclid`…); pe YouTube doar `?v=`, pe Netflix doar `/watch/<id>`.
 
-Dacă rulezi backend-ul pe altă mașină/port, schimbă adresa din popup („Adresă server”)
-și reîncarcă pagina.
+### Pornește backend-ul la tine
 
-## Deploy pe Railway (backend public, cu HTTPS)
+```bash
+cd server
+npm install
+npm start        # sau: npm run dev (repornire automată)
+```
 
-1. `railway.com` → cont nou → **New Project** → **Deploy from GitHub repo** (repo-ul ăsta
-   trebuie întâi pus pe GitHub) — sau, fără GitHub, `railway up` din CLI, rulat în `server/`.
-2. Dacă deploy-ul e din repo-ul întreg (nu doar `server/`), setează **Root Directory** =
-   `server` în setările serviciului, ca Railway să nu încerce să pornească extensia.
-3. **Volume persistent** — obligatoriu, altfel baza de date dispare la fiecare redeploy:
-   Settings → Volumes → Add Volume, montează-l la `/data`.
-4. **Variabile de mediu** (Settings → Variables):
+Ascultă pe `http://localhost:4000`. Baza de date (`annotations.db`) se creează singură,
+cu modulul nativ `node:sqlite` — fără compilare, dar e nevoie de **Node ≥ 22.5**.
+Setează adresa în popup („Adresă server”), apoi reîncarcă pagina.
+
+Lista completă a API-ului e în [`server/API.md`](server/API.md).
+
+### Deploy pe Railway (backend public, cu HTTPS)
+
+1. railway.com → **New Project** → **Deploy from GitHub repo** (sau `railway up` din
+   `server/`).
+2. Setează **Root Directory** = `server` în setările serviciului.
+3. Adaugă un **volum persistent** montat la `/data` — altfel baza de date se pierde la
+   fiecare redeploy.
+4. Variabile de mediu:
    - `DB_PATH` = `/data/annotations.db`
-   - `PORT` — Railway o setează singur, serverul o citește deja (`process.env.PORT`).
-   - `URLHAUS_AUTH_KEY` — cheie gratuită de pe auth.abuse.ch, pentru verificarea
-     linkurilor; fără ea verificarea e dezactivată (linkurile trec).
-   - `ADMIN_TOKEN` — parola paginii de moderare `/admin` (minim 24 de caractere,
-     ex. `openssl rand -hex 32`); fără ea, moderarea e dezactivată (404).
-   - `IP_HASH_SECRET` — cheia pentru amprenta IP-urilor de la voturi/raportări
-     (`openssl rand -hex 32`); fără ea se generează una la fiecare pornire, iar aceeași
-     conexiune poate vota din nou după un redeploy.
-5. Adresa serverului live e setată implicit în `extension/background.js`
-   (`DEFAULT_SERVER_URL`) — utilizatorii nu trebuie să configureze nimic.
+   - `ADMIN_TOKEN` — parola de proprietar pentru `/admin` (minim 24 de caractere, ex.
+     `openssl rand -hex 32`); fără ea moderarea e dezactivată
+   - `IP_HASH_SECRET` — cheia pentru amprenta IP-urilor (`openssl rand -hex 32`); fără ea
+     se generează una nouă la fiecare pornire
+   - `URLHAUS_AUTH_KEY` — cheie gratuită de pe auth.abuse.ch pentru verificarea linkurilor;
+     fără ea linkurile nu se verifică
+   - `PORT` îl setează Railway singur
+5. Adresa serverului live e `DEFAULT_SERVER_URL` din `extension/background.js`.
 
-## Limitări cunoscute (MVP)
+### Structură
 
-- Bulele video se atașează la **primul** `<video>` găsit pe pagină, poziționate fix
-  (fără drag după creare).
-- Fără autentificare reală — id-ul de autor/votant e generat local per profil de Chrome.
-- Fără moderare AI pentru limbaj; doar prag simplu de raportări (5) care ascunde adnotarea.
-- Fără persistență/backup automat al `annotations.db` — e un fișier SQLite local.
+```
+extension/   — extensia Chrome (Manifest V3, JavaScript simplu, fără bundler)
+server/      — backend: Node.js + Express + SQLite, pagina de moderare la /admin
+```
 
-## Următorii pași posibili
+### Limitări cunoscute
 
-1. Deploy backend pe AWS/DigitalOcean (schimbă doar adresa din popup).
-2. Login Gmail + reCAPTCHA înainte de a permite creare/vot.
-3. NFT-urile și integrarea blockchain, ca fază separată — cer decizii de arhitectură
-   proprii (wallet custodial vs. non-custodial, ce chain, cine plătește gas).
+- Fără moderare AI; conținutul raportat e verificat de moderatori oameni.
+- Backup-ul bazei de date e manual (se descarcă din `/admin`).
+- Nu e încă în Chrome Web Store — se instalează ca extensie despachetată (Load unpacked).

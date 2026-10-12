@@ -21,7 +21,9 @@ Node/Express/SQLite. Detalii de utilizare și deploy: `README.md`.
 - `extension/popup/` — popup: toggle toolbar (mesaj `TOGGLE_TOOLBAR`), adresă server.
 - `server/server.js` — Express, rate limit global; `routes/annotations.js` (GET, GET /top, POST,
   PATCH, DELETE, vote, report); `routes/check-url.js` (URLhaus); `GET /api/version` servește `version.json`.
-- Când adaugi/modifici un endpoint, actualizează și lista din `README.md`.
+- Când adaugi/modifici un endpoint, actualizează lista din `server/API.md` (ambele secțiuni:
+  English și Română). `README.md` e bilingv (EN întâi, apoi RO): la o versiune nouă adaugă
+  un rând în tabelul „What's new” / „Ce e nou” și schimbă „Current version”.
 
 ## Convenții
 
