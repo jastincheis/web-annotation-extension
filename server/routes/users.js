@@ -4,7 +4,7 @@
 // să nu poată fi purtate de doi oameni diferiți.
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { db, nameKey, displayNameFor, freeAnnotationsLeft } = require("../db");
+const { db, nameKey, displayNameFor, freeAnnotationsLeft, ipHash, accountsIpLeft, noteAccountCreation } = require("../db");
 const crypto = require("node:crypto");
 
 const router = express.Router();
@@ -87,10 +87,19 @@ function hashPassword(password) {
   const key = crypto.scryptSync(password, salt, 32, SCRYPT);
   return `scrypt$${salt.toString("hex")}$${key.toString("hex")}`;
 }
-function checkPassword(password, stored) {
+// Variantele asincrone rulează scrypt pe alt fir: o verificare durează zeci de ms, iar varianta
+// sincronă ar fi oprit serverul pentru toată lumea pe durata ei (un val de logări = server înghețat).
+const scryptAsync = (password, salt) =>
+  new Promise((ok, fail) => crypto.scrypt(password, salt, 32, SCRYPT, (err, key) => (err ? fail(err) : ok(key))));
+async function hashPasswordAsync(password) {
+  const salt = crypto.randomBytes(16);
+  const key = await scryptAsync(password, salt);
+  return `scrypt$${salt.toString("hex")}$${key.toString("hex")}`;
+}
+async function checkPassword(password, stored) {
   const [kind, saltHex, keyHex] = String(stored || "").split("$");
   if (kind !== "scrypt" || !saltHex || !keyHex) return false;
-  const key = crypto.scryptSync(password, Buffer.from(saltHex, "hex"), 32, SCRYPT);
+  const key = await scryptAsync(password, Buffer.from(saltHex, "hex"));
   const want = Buffer.from(keyHex, "hex");
   return want.length === key.length && crypto.timingSafeEqual(key, want);
 }
@@ -110,26 +119,32 @@ router.post("/me", (req, res) => {
 
 // POST /api/users/password  { authorId, password } — creează contul (sau schimbă parola).
 // Cere un nume ales: el e numele de utilizator cu care intri de pe alt calculator.
-router.post("/password", nameLimiter, (req, res) => {
+// Express 4 nu prinde erorile din funcțiile async — fără asta, o eroare ar opri tot serverul.
+const safeAsync = (fn) => (req, res, next) => fn(req, res, next).catch(next);
+
+router.post("/password", nameLimiter, safeAsync(async (req, res) => {
   const { authorId, password } = req.body || {};
   if (!validId(authorId)) return res.status(400).json({ error: "Missing authorId" });
   if (!validPassword(password)) return res.status(400).json({ error: "Parola are cel puțin 8 caractere." });
   const hash = authorHash(authorId);
-  const row = db.prepare("SELECT name FROM users WHERE author_hash = ?").get(hash);
+  const row = db.prepare("SELECT name, password_hash FROM users WHERE author_hash = ?").get(hash);
   if (!row) return res.status(400).json({ error: "Alege-ți întâi un nume — el e numele de utilizator." });
-  db.prepare("UPDATE users SET password_hash = ?, author_id = ?, updated_at = ? WHERE author_hash = ?").run(
-    hashPassword(password),
-    authorId,
-    Date.now(),
-    hash
-  );
+  const isNew = !row.password_hash; // cont nou (nu schimbare de parolă)
+  if (isNew && !accountsIpLeft(ipHash(req.ip))) {
+    return res.status(429).json({ error: "Prea multe conturi noi de pe conexiunea asta azi — încearcă mâine." });
+  }
+  const passwordHash = await hashPasswordAsync(password);
+  db.prepare(
+    "UPDATE users SET password_hash = ?, author_id = ?, updated_at = ?, account_created_at = COALESCE(account_created_at, ?) WHERE author_hash = ?"
+  ).run(passwordHash, authorId, Date.now(), Date.now(), hash);
+  if (isNew) noteAccountCreation(ipHash(req.ip));
   res.json({ ok: true, name: row.name });
-});
+}));
 
 // POST /api/users/login  { name, password, currentAuthorId? } — intri în cont de pe alt
 // calculator. Dacă acel calculator avea deja o identitate (currentAuthorId) cu adnotări, voturi
 // sau raportări, ele se mută în cont (mergeIdentity), ca să nu rămână needitabile.
-router.post("/login", loginLimiter, (req, res) => {
+router.post("/login", loginLimiter, safeAsync(async (req, res) => {
   const { name, password, currentAuthorId } = req.body || {};
   if (typeof name !== "string" || !validPassword(password)) {
     return res.status(400).json({ error: "Scrie numele de utilizator și parola." });
@@ -137,13 +152,13 @@ router.post("/login", loginLimiter, (req, res) => {
   const row = db.prepare("SELECT * FROM users WHERE name_key = ?").get(nameKey(name));
   const fail = () => res.status(401).json({ error: "Nume de utilizator sau parolă greșită." });
   if (!row?.password_hash || !row.author_id) {
-    checkPassword(password, DUMMY_HASH); // același timp de răspuns, ca să nu se afle ce nume există
+    await checkPassword(password, DUMMY_HASH); // același timp de răspuns, ca să nu se afle ce nume există
     return fail();
   }
-  if (!checkPassword(password, row.password_hash)) return fail();
+  if (!(await checkPassword(password, row.password_hash))) return fail();
   if (validId(currentAuthorId) && currentAuthorId !== row.author_id) mergeIdentity(currentAuthorId, row.author_id);
   res.json({ authorId: row.author_id, hash: row.author_hash, name: row.name });
-});
+}));
 
 // Mută tot ce ține de identitatea `fromId` pe `toId`: adnotări, voturi, raportări. Voturile
 // sau raportările duble (amândouă pe aceeași adnotare) și voturile date propriilor adnotări se
@@ -178,7 +193,7 @@ function mergeIdentity(fromId, toId) {
       const dup = db.prepare("SELECT 1 FROM reports WHERE annotation_id = ? AND reporter_id = ?").get(r.annotation_id, toId);
       if (dup) {
         db.prepare("DELETE FROM reports WHERE annotation_id = ? AND reporter_id = ?").run(r.annotation_id, fromId);
-        db.prepare("UPDATE annotations SET reports = MAX(reports - 1, 0) WHERE id = ?").run(r.annotation_id);
+        db.prepare("UPDATE annotations SET reports = MAX(reports - 1, 0), trusted_reports = MAX(trusted_reports - ?, 0) WHERE id = ?").run(r.trusted ? 1 : 0, r.annotation_id);
       } else {
         db.prepare("UPDATE reports SET reporter_id = ? WHERE annotation_id = ? AND reporter_id = ?").run(toId, r.annotation_id, fromId);
       }

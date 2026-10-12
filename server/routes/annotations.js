@@ -1,7 +1,7 @@
 const crypto = require("node:crypto");
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash, displayNameFor, collectUsers, FREE_DAILY_LIMIT, hasAccount, freeAnnotationsLeft } = require("../db");
+const { db, REPORT_HIDE_THRESHOLD, VISIBLE, sha256Hex, ipHash, displayNameFor, collectUsers, FREE_DAILY_LIMIT, hasAccount, freeAnnotationsLeft, freeIpLeft, noteFreeWrite, isTrustedReporter } = require("../db");
 
 // Pagina se identifică prin amprenta adresei (?urlHash=, 64 hex) — varianta nouă, care nu
 // trimite adresa. ?url= rămâne doar pentru extensiile încă neactualizate (≤ 0.2.3).
@@ -189,16 +189,24 @@ router.get("/top", (req, res) => {
   const cached = topCache.get(limit);
   if (cached && cached.expiresAt > Date.now()) return reply(cached);
 
+  // Topul global se face doar din voturile celor cu cont: altfel, cu multe IP-uri (date mobile,
+  // VPN), oricine și-ar fi putut urca adnotarea prin voturi fără cont. Pe pagină contează toate.
+  // `votes` din răspuns = scorul din voturile cu cont, ca ordinea să se potrivească cu cifrele.
   const rows = db
     .prepare(
-      `SELECT * FROM annotations
-       WHERE ${VISIBLE} AND votes > 0
-       ORDER BY votes DESC, created_at ASC
+      `SELECT a.*, t.score FROM (
+         SELECT v.annotation_id AS id, SUM(CASE WHEN v.direction = 'up' THEN 1 ELSE -1 END) AS score
+         FROM votes v JOIN users u ON u.author_id = v.voter_id
+         WHERE u.password_hash IS NOT NULL
+         GROUP BY v.annotation_id
+       ) t JOIN annotations a ON a.id = t.id
+       WHERE t.score > 0 AND ${VISIBLE.replace(/(trusted_reports|removed_at)/g, "a.$1")}
+       ORDER BY t.score DESC, a.created_at ASC
        LIMIT ?`
     )
     .all(limit);
 
-  const data = rows.map(serialize);
+  const data = rows.map((r) => ({ ...serialize(r), votes: r.score }));
   const entry = { data, v: crypto.createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 16), expiresAt: Date.now() + TOP_CACHE_TTL_MS };
   topCache.set(limit, entry);
   reply(entry);
@@ -251,9 +259,10 @@ router.post("/", writeLimiter, (req, res) => {
   const invalid = validateAnnotation(type, data);
   if (invalid) return res.status(400).json({ error: invalid });
   if (!isStr(url, 3000) || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "Adresă de pagină invalidă" });
-  if (!hasAccount(authorHash(authorId))) {
+  const free = !hasAccount(authorHash(authorId));
+  if (free) {
     if (type === "link" || data.url) return needAccount(res, "Linkurile sunt doar pentru cei cu cont.");
-    if (!freeAnnotationsLeft(authorHash(authorId))) {
+    if (!freeAnnotationsLeft(authorHash(authorId)) || !freeIpLeft(ipHash(req.ip))) {
       return needAccount(res, `Fără cont poți face ${FREE_DAILY_LIMIT} adnotări pe zi — ai ajuns la limită.`);
     }
   }
@@ -265,6 +274,7 @@ router.post("/", writeLimiter, (req, res) => {
     `INSERT INTO annotations (id, url, url_hash, type, data, author_id, author_hash, votes, reports, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`
   ).run(id, url, sha256Hex(url), type, JSON.stringify(data), authorId, authorHash(authorId), createdAt);
+  if (free) noteFreeWrite(ipHash(req.ip));
 
   const row = db.prepare("SELECT * FROM annotations WHERE id = ?").get(id);
   res.status(201).json(serialize(row));
@@ -368,7 +378,8 @@ router.post("/:id/vote", writeLimiter, (req, res) => {
 // POST /api/annotations/:id/report  { reporterId, reason, details?, goodFaith: true }
 // Notificare motivată (DSA art. 16): motivul din listă, detalii opționale și confirmarea că
 // raportarea e făcută cu bună-credință. O singură raportare pe adnotare per raportor ȘI per
-// adresă IP; la REPORT_HIDE_THRESHOLD raportări distincte adnotarea se ascunde automat,
+// adresă IP; la REPORT_HIDE_THRESHOLD raportări distincte de la conturi mai vechi de o zi
+// adnotarea se ascunde automat,
 // până o verifică un administrator (vezi routes/admin.js).
 const REPORT_REASONS = new Set(["illegal", "hate", "harassment", "personal_data", "sexual", "spam", "copyright", "other"]);
 
@@ -389,10 +400,12 @@ router.post("/:id/report", writeLimiter, (req, res) => {
     .get(id, reporterId, ip);
 
   if (!existing) {
+    // toate raportările ajung la moderator; doar cele de la conturi de peste o zi ascund automat
+    const trusted = isTrustedReporter(authorHash(reporterId)) ? 1 : 0;
     db.prepare(
-      "INSERT INTO reports (annotation_id, reporter_id, reason, details, created_at, ip_hash) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run(id, reporterId, reason, details ? String(details) : null, Date.now(), ip);
-    db.prepare("UPDATE annotations SET reports = reports + 1 WHERE id = ?").run(id);
+      "INSERT INTO reports (annotation_id, reporter_id, reason, details, created_at, ip_hash, trusted) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(id, reporterId, reason, details ? String(details) : null, Date.now(), ip, trusted);
+    db.prepare("UPDATE annotations SET reports = reports + 1, trusted_reports = trusted_reports + ? WHERE id = ?").run(trusted, id);
   }
 
   const row = db.prepare("SELECT * FROM annotations WHERE id = ?").get(id);

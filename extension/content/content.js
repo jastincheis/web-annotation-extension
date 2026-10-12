@@ -89,8 +89,27 @@
     return location.origin + location.pathname + (search ? "?" + search : "");
   }
 
+  // Interfața noastră stă în pagina site-ului, deci scripturile site-ului îi pot „apăsa”
+  // butoanele (element.click(), evenimente inventate) — ar putea vota, raporta sau scrie în chat
+  // în numele vizitatorului. Ținem minte ce elemente sunt ale noastre și oprim, înaintea
+  // oricărui handler, orice eveniment de mouse/tastatură pe ele care nu vine de la om
+  // (isTrusted = false). Paginii nu-i stricăm nimic: blocăm doar pe elementele noastre.
+  const OWN_NODES = new WeakSet();
+  ["click", "dblclick", "auxclick", "contextmenu", "mousedown", "mouseup", "pointerdown", "pointerup", "keydown", "keypress", "keyup", "submit"].forEach((type) =>
+    window.addEventListener(
+      type,
+      (e) => {
+        if (e.isTrusted || !e.composedPath().some((n) => OWN_NODES.has(n))) return;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      },
+      true
+    )
+  );
+
   function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);
+    OWN_NODES.add(node);
     for (const [k, v] of Object.entries(attrs)) {
       if (k === "class") node.className = v;
       else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2), v);
@@ -102,6 +121,7 @@
 
   function svgEl(tag, attrs = {}) {
     const node = document.createElementNS(SVG_NS, tag);
+    OWN_NODES.add(node);
     for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
     return node;
   }

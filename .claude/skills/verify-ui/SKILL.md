@@ -43,9 +43,16 @@ const q = (s) => document.querySelector(s);
 })
 ```
 
-Acțiuni utile:
-- Deschide toolbar-ul: `document.getElementById('wa-toggle-btn').click()`
-- Alege o unealtă: `document.querySelector('.wa-tool[data-tool="pen"]').click()`
+**Atenție (din 0.3.5):** extensia ignoră clickurile/tastele care nu vin de la om
+(`isTrusted = false`) pe elementele ei — protecție contra site-urilor care ar vota / scrie în
+numele vizitatorului. Deci `.click()` sau `dispatchEvent` din `javascript_tool` NU mai acționează
+butoanele Adormis. Pentru acțiuni folosește `computer` (left_click/hover pe coordonate — sunt
+evenimente reale), cu coordonatele luate din `getBoundingClientRect()`; DOM-ul îl poți citi în
+continuare cu `javascript_tool`.
+
+Acțiuni utile (cu click real, pe coordonatele elementului):
+- Deschide toolbar-ul: `#wa-toggle-btn`
+- Alege o unealtă: `.wa-tool[data-tool="pen"]`
   (`select`, `pen`, `spray`, `shape`, `bubble`, `text`, `link`)
 - Panouri: `#wa-leaderboard-panel`, `#wa-mine-panel`, `#wa-mine-list`
 - Popover-uri temporare: `.wa-popover`, `.wa-lb-detail`, `.wa-spray-confirm`

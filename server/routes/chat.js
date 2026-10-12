@@ -5,7 +5,7 @@
 const crypto = require("node:crypto");
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { db, VISIBLE: ANN_VISIBLE, sha256Hex, ipHash, displayNameFor, hasAccount } = require("../db");
+const { db, VISIBLE: ANN_VISIBLE, sha256Hex, ipHash, displayNameFor, hasAccount, isTrustedReporter } = require("../db");
 
 const router = express.Router();
 
@@ -49,6 +49,20 @@ for (const [col, type] of [["video_t", "REAL"], ["video_paused", "INTEGER"], ["v
   if (!has) db.exec(`ALTER TABLE chat_presence ADD COLUMN ${col} ${type}`);
 }
 
+// Ca la adnotări: doar raportările de la conturi mai vechi de o zi ascund automat un mesaj
+// (trusted_reports); toate ajung la moderator. Cele existente își păstrează efectul.
+{
+  const has = (t, c) => db.prepare(`SELECT 1 FROM pragma_table_info('${t}') WHERE name = ?`).get(c);
+  if (!has("chat_messages", "trusted_reports")) {
+    db.exec("ALTER TABLE chat_messages ADD COLUMN trusted_reports INTEGER NOT NULL DEFAULT 0");
+    db.exec("UPDATE chat_messages SET trusted_reports = reports");
+  }
+  if (!has("chat_reports", "trusted")) {
+    db.exec("ALTER TABLE chat_reports ADD COLUMN trusted INTEGER NOT NULL DEFAULT 0");
+    db.exec("UPDATE chat_reports SET trusted = 1");
+  }
+}
+
 const MAX_LEN = 300;
 const KEEP_MS = 24 * 60 * 60 * 1000;
 const REMOVED_KEEP_MS = 2 * 365 * 24 * 60 * 60 * 1000;
@@ -82,7 +96,7 @@ function purgeChat() {
 purgeChat();
 setInterval(purgeChat, 60 * 1000).unref(); // la minut: „ești aici” dispare în cel mult 2 minute
 
-const VISIBLE = `removed_at IS NULL AND reports < ${HIDE_AT_REPORTS}`;
+const VISIBLE = `removed_at IS NULL AND trusted_reports < ${HIDE_AT_REPORTS}`;
 function serialize(m) {
   return { id: m.id, authorHash: m.author_hash, authorName: displayNameFor(m.author_hash), text: m.text, createdAt: m.created_at };
 }
@@ -189,7 +203,8 @@ router.delete("/:id", (req, res) => {
 });
 
 // POST /api/chat/:id/report  { reporterId, reason } — raportare (oricine, o dată per mesaj și
-// per conexiune). La HIDE_AT_REPORTS raportări mesajul se ascunde până la verificare.
+// per conexiune). La HIDE_AT_REPORTS raportări de la conturi mai vechi de o zi mesajul se ascunde
+// până la verificare.
 router.post("/:id/report", reportLimiter, (req, res) => {
   const { reporterId, reason } = req.body || {};
   if (!validId(reporterId)) return res.status(400).json({ error: "Missing reporterId" });
@@ -201,14 +216,16 @@ router.post("/:id/report", reportLimiter, (req, res) => {
   const ip = ipHash(req.ip);
   const dup = db.prepare("SELECT 1 FROM chat_reports WHERE message_id = ? AND (reporter_hash = ? OR ip_hash = ?)").get(msg.id, me, ip);
   if (dup) return res.json({ ok: true, already: true });
-  db.prepare("INSERT INTO chat_reports (message_id, reporter_hash, ip_hash, reason, created_at) VALUES (?, ?, ?, ?, ?)").run(
+  const trusted = isTrustedReporter(me) ? 1 : 0;
+  db.prepare("INSERT INTO chat_reports (message_id, reporter_hash, ip_hash, reason, created_at, trusted) VALUES (?, ?, ?, ?, ?, ?)").run(
     msg.id,
     me,
     ip,
     reason,
-    Date.now()
+    Date.now(),
+    trusted
   );
-  db.prepare("UPDATE chat_messages SET reports = reports + 1 WHERE id = ?").run(msg.id);
+  db.prepare("UPDATE chat_messages SET reports = reports + 1, trusted_reports = trusted_reports + ? WHERE id = ?").run(trusted, msg.id);
   res.json({ ok: true });
 });
 

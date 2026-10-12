@@ -133,7 +133,7 @@ function adminView(row) {
     reports: row.reports,
     authorHash: row.author_hash,
     authorName: displayNameFor(row.author_hash),
-    hidden: row.reports >= REPORT_HIDE_THRESHOLD,
+    hidden: row.trusted_reports >= REPORT_HIDE_THRESHOLD,
     removedAt: row.removed_at,
     removedReason: row.removed_reason,
     createdAt: row.created_at,
@@ -195,7 +195,7 @@ router.post("/annotations/:id/remove", (req, res) => {
 router.post("/annotations/:id/restore", (req, res) => {
   const row = db.prepare("SELECT * FROM annotations WHERE id = ?").get(req.params.id);
   if (!row) return res.status(404).json({ error: "Nu există" });
-  db.prepare("UPDATE annotations SET removed_at = NULL, removed_reason = NULL, reports = 0 WHERE id = ?").run(row.id);
+  db.prepare("UPDATE annotations SET removed_at = NULL, removed_reason = NULL, reports = 0, trusted_reports = 0 WHERE id = ?").run(row.id);
   db.prepare("DELETE FROM reports WHERE annotation_id = ?").run(row.id);
   res.json(adminView(db.prepare("SELECT * FROM annotations WHERE id = ?").get(row.id)));
 });
@@ -289,8 +289,8 @@ router.post("/users/:hash/delete", ownerOnly, (req, res) => {
         done.votes++;
       }
       db.prepare("DELETE FROM votes WHERE voter_id = ?").run(id);
-      for (const r of db.prepare("SELECT annotation_id FROM reports WHERE reporter_id = ?").all(id)) {
-        db.prepare("UPDATE annotations SET reports = MAX(reports - 1, 0) WHERE id = ?").run(r.annotation_id);
+      for (const r of db.prepare("SELECT annotation_id, trusted FROM reports WHERE reporter_id = ?").all(id)) {
+        db.prepare("UPDATE annotations SET reports = MAX(reports - 1, 0), trusted_reports = MAX(trusted_reports - ?, 0) WHERE id = ?").run(r.trusted ? 1 : 0, r.annotation_id);
         done.reports++;
       }
       db.prepare("DELETE FROM reports WHERE reporter_id = ?").run(id);
@@ -303,8 +303,8 @@ router.post("/users/:hash/delete", ownerOnly, (req, res) => {
     }
     done.annotations = own.length;
     // chatul: mesajele lui (nu și cele scoase de moderator — evidență) și raportările făcute
-    for (const r of db.prepare("SELECT message_id FROM chat_reports WHERE reporter_hash = ?").all(hash)) {
-      db.prepare("UPDATE chat_messages SET reports = MAX(reports - 1, 0) WHERE id = ?").run(r.message_id);
+    for (const r of db.prepare("SELECT message_id, trusted FROM chat_reports WHERE reporter_hash = ?").all(hash)) {
+      db.prepare("UPDATE chat_messages SET reports = MAX(reports - 1, 0), trusted_reports = MAX(trusted_reports - ?, 0) WHERE id = ?").run(r.trusted ? 1 : 0, r.message_id);
     }
     db.prepare("DELETE FROM chat_reports WHERE reporter_hash = ?").run(hash);
     const chatIds = db.prepare("SELECT id FROM chat_messages WHERE author_hash = ? AND removed_at IS NULL").all(hash);
@@ -331,6 +331,7 @@ router.get("/chat", (_req, res) => {
     text: m.text,
     createdAt: m.created_at,
     reports: m.reports,
+    hidden: m.trusted_reports >= require("./chat").HIDE_AT_REPORTS,
     removedAt: m.removed_at,
     removedReason: m.removed_reason,
     reasons: db.prepare("SELECT reason, COUNT(*) AS n FROM chat_reports WHERE message_id = ? GROUP BY reason").all(m.id),
@@ -352,7 +353,7 @@ router.post("/chat/:id/remove", (req, res) => {
 
 // POST /api/admin/chat/:id/restore — repune mesajul și șterge raportările lui.
 router.post("/chat/:id/restore", (req, res) => {
-  const r = db.prepare("UPDATE chat_messages SET removed_at = NULL, removed_reason = NULL, reports = 0 WHERE id = ?").run(req.params.id);
+  const r = db.prepare("UPDATE chat_messages SET removed_at = NULL, removed_reason = NULL, reports = 0, trusted_reports = 0 WHERE id = ?").run(req.params.id);
   if (!r.changes) return res.status(404).json({ error: "Nu există" });
   db.prepare("DELETE FROM chat_reports WHERE message_id = ?").run(req.params.id);
   res.json({ ok: true });

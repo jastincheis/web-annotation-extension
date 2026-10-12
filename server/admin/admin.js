@@ -181,7 +181,7 @@ function chatCard(m) {
     { class: "card" },
     el("div", { class: "meta" },
       el("span", { class: "badge" }, "chat"),
-      m.removedAt ? "" : el("span", { class: m.reports >= 3 ? "badge hidden" : "badge" }, `${m.reports} raportări${m.reports >= 3 ? " · ascuns automat" : ""}`),
+      m.removedAt ? "" : el("span", { class: m.hidden ? "badge hidden" : "badge" }, `${m.reports} raportări${m.hidden ? " · ascuns automat" : ""}`),
       el("span", {}, `autor: ${m.authorName || "Utilizator " + String(m.authorHash).slice(0, 4).toUpperCase()}`),
       el("span", {}, `scris ${when(m.createdAt)}`),
       m.removedAt ? el("span", {}, `scos ${when(m.removedAt)}`) : ""

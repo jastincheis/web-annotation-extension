@@ -1,4 +1,4 @@
 {
-  "latest": "0.3.4",
-  "notes": "Cât ai chatul deschis, adnotările puse de ceilalți pe pagină îți apar imediat, fără refresh, cu un anunț și butonul „Vezi” care te duce la minutul lor din video. Topul se încarcă mai eficient."
+  "latest": "0.3.5",
+  "notes": "Actualizare de securitate: site-urile nu mai pot apăsa butoanele Adormis în locul tău (vot, chat, raportare). Topul global ține cont doar de voturile celor cu cont, iar raportările ascund automat ceva doar dacă vin de la conturi mai vechi de o zi."
 }

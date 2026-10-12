@@ -55,10 +55,10 @@ Endpoint-uri disponibile:
 - `POST /api/chat/here` — `{urlHash, exclude?}` → `{count}`: câți au chatul deschis acum (cifra de pe butonul de chat); `exclude` = amprenta ta, ca să nu te numeri
 - `POST /api/chat` — `{urlHash, authorId, text}`: mesaj nou (doar cu cont, ≤ 300 caractere, 6/minut, 1 la 2 s)
 - `DELETE /api/chat/:id` — `{authorId}`: autorul își șterge mesajul
-- `POST /api/chat/:id/report` — `{reporterId, reason}`; la 3 raportări mesajul se ascunde
+- `POST /api/chat/:id/report` — `{reporterId, reason}`; la 3 raportări de la conturi mai vechi de o zi mesajul se ascunde (toate ajung la moderator)
 - `GET /api/admin/chat`, `POST /api/admin/chat/:id/remove|restore`, `POST /api/admin/users/:authorHash/chat-block` `{blocked}` — moderarea chatului
 - `POST /api/users/me` — `{authorId}` → `{name, hasPassword, freeLeft}` (`freeLeft` = câte adnotări mai poate face azi cine n-are cont; `null` cu cont)
-- `POST /api/users/password` — `{authorId, password}` (min. 8): creează contul / schimbă parola;
+- `POST /api/users/password` — `{authorId, password}` (min. 8): creează contul (cel mult 3 conturi noi pe zi de pe același IP) / schimbă parola;
   cere un nume ales (= numele de utilizator); parola doar ca hash scrypt
 - `POST /api/users/login` — `{name, password, currentAuthorId?}` → `{authorId, hash, name}`;
   identitatea curentă a calculatorului se mută în cont (adnotări, voturi, raportări); 10 încercări / 15 min
@@ -68,7 +68,7 @@ Endpoint-uri disponibile:
   lui vizibile de pe toate paginile, după voturi (apoi vechime), max. 500
 - `POST /api/annotations/mine` — `{authorId}`: toate adnotările autorului, de pe toate
   paginile (panoul „Ale mele → Toate”), cele mai noi primele, max. 500
-- `GET /api/annotations/top?limit=10` — cele mai votate adnotări de pe toate paginile; cu `&v=<versiune>` → `{v, items}` sau doar `{v, same: true}` dacă Topul nu s-a schimbat de la versiunea aceea
+- `GET /api/annotations/top?limit=10` — cele mai votate adnotări de pe toate paginile, după voturile celor cu cont (`votes` = acel scor); cu `&v=<versiune>` → `{v, items}` sau doar `{v, same: true}` dacă Topul nu s-a schimbat de la versiunea aceea
   (min. 1 vot, `limit` max. 50, cache 10s)
 - `GET /api/annotations/stats?urlHash=<sha256(url)>` — numărul de adnotări pe tipuri:
   `{global: {total, byType, withLink, pages, users}, page: {total, byType, withLink}}`
@@ -84,7 +84,7 @@ Endpoint-uri disponibile:
   amprentată cu `IP_HASH_SECRET` (429 peste)
 - `POST /api/annotations/:id/report` — `{reporterId, reason, details?, goodFaith: true}`;
   `reason` ∈ `illegal|hate|harassment|personal_data|sexual|spam|copyright|other`; o raportare
-  per raportor și per IP; auto-ascundere la 5 raportări, până la verificarea unui moderator
+  per raportor și per IP; auto-ascundere la 5 raportări de la conturi mai vechi de o zi, până la verificarea unui moderator (cele fără cont ajung doar în coadă)
 - `GET /api/admin/queue?status=reported|removed`, `POST /api/admin/annotations/:id/remove`
   `{reason}`, `POST /api/admin/annotations/:id/restore` — moderare, cu
   `Authorization: Bearer <ADMIN_TOKEN>` (fără CORS); interfața e la `/admin`. Adnotările

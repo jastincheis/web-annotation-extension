@@ -65,6 +65,7 @@ db.exec(`
 function addColumn(table, column, type) {
   const exists = db.prepare(`SELECT COUNT(*) AS n FROM pragma_table_info('${table}') WHERE name = ?`).get(column).n;
   if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  return !exists; // true = coloana tocmai s-a adăugat (pentru completarea datelor vechi)
 }
 // Moderare: o adnotare scoasă de administrator (conținut ilegal / contra regulilor) nu mai
 // apare nicăieri, dar rămâne înregistrată, cu motivul (DSA cere o „expunere de motive”).
@@ -112,6 +113,23 @@ const nameStmt = db.prepare("SELECT name FROM users WHERE author_hash = ?");
 function displayNameFor(hash) {
   return (hash && nameStmt.get(hash)?.name) || null;
 }
+// Raportări „de încredere” = de la conturi cu parolă mai vechi de o zi. Doar ele ascund automat o
+// adnotare (trusted_reports, vezi VISIBLE) — altfel oricine cu 5 IP-uri ar fi putut ascunde
+// adnotările altora. Toate raportările (inclusiv fără cont) ajung în coada de moderare (`reports`).
+// La pornire, raportările deja existente rămân cu efectul lor (se socotesc de încredere).
+if (addColumn("annotations", "trusted_reports", "INTEGER NOT NULL DEFAULT 0")) db.exec("UPDATE annotations SET trusted_reports = reports");
+if (addColumn("reports", "trusted", "INTEGER NOT NULL DEFAULT 0")) db.exec("UPDATE reports SET trusted = 1");
+// Când s-a făcut contul (prima parolă). Conturile vechi primesc ora ultimei modificări.
+if (addColumn("users", "account_created_at", "INTEGER")) {
+  db.exec("UPDATE users SET account_created_at = updated_at WHERE password_hash IS NOT NULL");
+}
+db.exec(`CREATE INDEX IF NOT EXISTS idx_users_author_id ON users(author_id);`);
+const TRUSTED_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
+function isTrustedReporter(hash) {
+  const row = db.prepare("SELECT account_created_at FROM users WHERE author_hash = ? AND password_hash IS NOT NULL").get(hash);
+  return !!row?.account_created_at && row.account_created_at <= Date.now() - TRUSTED_ACCOUNT_AGE_MS;
+}
+
 addColumn("votes", "ip_hash", "TEXT");
 addColumn("reports", "ip_hash", "TEXT");
 db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_ip ON votes(annotation_id, ip_hash);`);
@@ -191,7 +209,7 @@ function collectUsers() {
 }
 
 // Condiția „vizibilă public”: nu ascunsă de raportări și nu scoasă de moderator.
-const VISIBLE = `reports < ${REPORT_HIDE_THRESHOLD} AND removed_at IS NULL`;
+const VISIBLE = `trusted_reports < ${REPORT_HIDE_THRESHOLD} AND removed_at IS NULL`;
 
 // Secretul pentru amprenta IP-urilor. Trebuie setat pe server (IP_HASH_SECRET), altfel se
 // generează unul la fiecare pornire — și atunci aceeași adresă IP ar putea vota din nou
@@ -209,6 +227,48 @@ const FREE_DAILY_LIMIT = 3;
 function hasAccount(hash) {
   return !!db.prepare("SELECT 1 FROM users WHERE author_hash = ? AND password_hash IS NOT NULL").get(hash);
 }
+// Aceeași limită și pe conexiune: fără ea, cine își inventează identități noi (ID-ul îl alege
+// extensia) ar fi putut face oricâte. FREE_IP_DAILY_LIMIT e mai mare decât limita pe om, pentru
+// familii / colegi / CGNAT (Digi pune mulți clienți pe aceeași IP). Ținem doar amprenta HMAC a
+// IP-ului și ora, cel mult 24 de ore.
+const FREE_IP_DAILY_LIMIT = 12;
+db.exec(`
+  CREATE TABLE IF NOT EXISTS free_writes (ip_hash TEXT NOT NULL, created_at INTEGER NOT NULL);
+  CREATE INDEX IF NOT EXISTS idx_free_writes ON free_writes(ip_hash, created_at);
+`);
+// Conturi noi: cel mult ACCOUNT_IP_DAILY_LIMIT pe zi de pe aceeași conexiune (altfel regulile
+// „doar cu cont” s-ar ocoli făcând zeci de conturi). Tot doar amprenta IP-ului, cel mult 24 de ore.
+const ACCOUNT_IP_DAILY_LIMIT = 3;
+db.exec(`
+  CREATE TABLE IF NOT EXISTS account_creations (ip_hash TEXT NOT NULL, created_at INTEGER NOT NULL);
+  CREATE INDEX IF NOT EXISTS idx_account_creations ON account_creations(ip_hash, created_at);
+`);
+function accountsIpLeft(ipHashValue) {
+  const { n } = db
+    .prepare("SELECT COUNT(*) AS n FROM account_creations WHERE ip_hash = ? AND created_at > ?")
+    .get(ipHashValue, Date.now() - 24 * 60 * 60 * 1000);
+  return Math.max(ACCOUNT_IP_DAILY_LIMIT - n, 0);
+}
+function noteAccountCreation(ipHashValue) {
+  db.prepare("INSERT INTO account_creations (ip_hash, created_at) VALUES (?, ?)").run(ipHashValue, Date.now());
+}
+
+function purgeFreeWrites() {
+  db.prepare("DELETE FROM free_writes WHERE created_at < ?").run(Date.now() - 24 * 60 * 60 * 1000);
+  db.prepare("DELETE FROM account_creations WHERE created_at < ?").run(Date.now() - 24 * 60 * 60 * 1000);
+}
+purgeFreeWrites();
+setInterval(purgeFreeWrites, 60 * 60 * 1000).unref();
+function freeIpLeft(ipHashValue) {
+  const { n } = db
+    .prepare("SELECT COUNT(*) AS n FROM free_writes WHERE ip_hash = ? AND created_at > ?")
+    .get(ipHashValue, Date.now() - 24 * 60 * 60 * 1000);
+  return Math.max(FREE_IP_DAILY_LIMIT - n, 0);
+}
+function noteFreeWrite(ipHashValue) {
+  db.prepare("INSERT INTO free_writes (ip_hash, created_at) VALUES (?, ?)").run(ipHashValue, Date.now());
+}
+
 function freeAnnotationsLeft(hash) {
   const { n } = db
     .prepare("SELECT COUNT(*) AS n FROM annotations WHERE author_hash = ? AND created_at > ?")
@@ -228,4 +288,9 @@ module.exports = {
   FREE_DAILY_LIMIT,
   hasAccount,
   freeAnnotationsLeft,
+  freeIpLeft,
+  noteFreeWrite,
+  isTrustedReporter,
+  accountsIpLeft,
+  noteAccountCreation,
 };
