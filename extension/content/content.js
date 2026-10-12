@@ -341,6 +341,8 @@
     els.mineBtn = btn("wa-mine-btn", "pin", "Adnotările mele pe pagina asta", () => setMinePanelOpen(!state.myPanelOpen));
     els.topBtn = btn("wa-top-btn", "trophy", "Arată / ascunde Topul", () => toggleLeaderboard());
     els.chatBtn = btn("wa-chat-btn", "chat", "Chat cu cei de pe pagina asta", () => setChatOpen(!chat.open));
+    els.chatBadge = el("span", { class: "wa-chat-badge", hidden: "true" });
+    els.chatBtn.append(els.chatBadge);
     const closeBtn = btn("wa-close", "close", "Închide bara (Esc)", () => toggleToolbar(false));
     // Bulina de versiune: verde = la zi, portocaliu = există una nouă (click = detalii).
     els.versionBtn = el("button", { class: "wa-dock-btn wa-version", onclick: showVersionInfo }, el("span", { class: "wa-version-dot" }));
@@ -888,6 +890,7 @@
     els.toolbar.hidden = !state.toolbarVisible;
     els.toggleBtn?.classList.toggle("active", state.toolbarVisible);
     if (state.toolbarVisible) {
+      refreshChatBadge();
       refreshVersionDot(); // starea știută acum…
       try {
         chrome.runtime.sendMessage({ type: "WA_CHECK_VERSION" }).catch(() => {}); // …și o verificare proaspătă
@@ -4481,7 +4484,10 @@
     els.chat.hidden = !open;
     els.chatBtn?.classList.toggle("active", open);
     clearInterval(chat.timer);
-    if (!open) return stopFollow(); // minutul se arată doar cât ai chatul deschis
+    if (!open) {
+      refreshChatBadge();
+      return stopFollow(); // minutul se arată doar cât ai chatul deschis
+    }
     if (els.chat.parentNode !== uiHost()) uiHost().appendChild(els.chat);
     positionChat();
     renderChatFoot();
@@ -4500,7 +4506,33 @@
 
   window.addEventListener("resize", () => chat.open && positionChat());
 
+  // Cifra de pe butonul de chat: câți au chatul deschis pe pagina asta acum. Cât chatul e
+  // deschis vine din interogarea lui; cât e închis, o cerem separat la 20 s — doar cu bara
+  // vizibilă și tab-ul în față. Peste 999: 1.5K, 3K, 30K, 1.2M.
+  const CHAT_BADGE_MS = 20000;
+  function shortCount(n) {
+    if (n < 1000) return String(n);
+    const [v, unit] = n < 1e6 ? [n / 1e3, "K"] : [n / 1e6, "M"];
+    return `${v < 10 ? Math.floor(v * 10) / 10 : Math.floor(v)}${unit}`;
+  }
+  function setChatBadge(n) {
+    if (!els.chatBadge) return;
+    els.chatBadge.hidden = !n;
+    els.chatBadge.textContent = n ? shortCount(n) : "";
+    els.chatBtn.title = n ? `Chat cu cei de pe pagina asta — ${n} ${n === 1 ? "om" : "oameni"} acum` : "Chat cu cei de pe pagina asta";
+  }
+  async function refreshChatBadge() {
+    if (!state.consent || chat.open || !state.toolbarVisible) return;
+    try {
+      setChatBadge(await WA_Api.chatHere(pageKey(), state.userHash));
+    } catch {}
+  }
+  setInterval(() => document.visibilityState === "visible" && refreshChatBadge(), CHAT_BADGE_MS);
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refreshChatBadge());
+
   function resetChat() {
+    setChatBadge(0);
+    refreshChatBadge();
     stopFollow(); // alt video = altă cameră
     chat.since = 0;
     chat.ids.clear();
@@ -4539,6 +4571,7 @@
       if (atBottom || r.messages.length) els.chatList.scrollTop = els.chatList.scrollHeight;
       const names = r.here.filter((h) => h.name).map((h) => (h.hash === state.userHash ? `${h.name} (tu)` : h.name));
       els.chatHere.textContent = `👥 ${r.here.length}`;
+      setChatBadge(r.hereCount ?? r.here.length);
       els.chatHere.title = r.here.length ? `Acum pe pagină: ${names.join(", ") || "—"}${r.here.length > names.length ? ` + ${r.here.length - names.length} fără nume` : ""}` : "";
       renderChatFoot();
       chat.here = r.here;

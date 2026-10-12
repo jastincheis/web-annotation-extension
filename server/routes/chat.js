@@ -87,6 +87,22 @@ function serialize(m) {
   return { id: m.id, authorHash: m.author_hash, authorName: displayNameFor(m.author_hash), text: m.text, createdAt: m.created_at };
 }
 
+// Câți au chatul deschis pe pagină acum (fără plafonul de 50 din lista `here`).
+// `exclude` = o amprentă publică de scos din numărătoare (rândul tău rămas după ce ai închis chatul).
+function countHere(urlHash, now, exclude = "") {
+  return db
+    .prepare("SELECT COUNT(*) AS n FROM chat_presence WHERE url_hash = ? AND seen_at > ? AND author_hash != ?")
+    .get(urlHash, now - PRESENCE_MS, exclude).n;
+}
+
+// POST /api/chat/here  { urlHash, exclude? } — doar numărul celor din chat, pentru cifra de pe
+// butonul de chat cât chatul e închis. Nu te marchează „aici”.
+router.post("/here", (req, res) => {
+  const { urlHash, exclude } = req.body || {};
+  if (!validUrlHash(urlHash)) return res.status(400).json({ error: "urlHash invalid" });
+  res.json({ count: countHere(urlHash, Date.now(), validHash(exclude) ? exclude : "") });
+});
+
 // POST /api/chat/poll  { urlHash, authorId?, since?, video?: {t, paused}, follows? } — mesajele camerei (ultimele 24 h, cel mult
 // 100; cu `since`, doar cele mai noi) + cine e aici. POST ca să nu apară ID-ul în jurnale/URL.
 // Cu authorId, te marchează „aici” (doar cât ai chatul deschis — extensia întreabă doar atunci).
@@ -127,8 +143,9 @@ router.post("/poll", (req, res) => {
     follows: r.follows || null,
     followers: followers.get(r.author_hash) || 0,
   }));
+  const hereCount = countHere(urlHash, now);
   const canWrite = !!me && hasAccount(me) && !db.prepare("SELECT 1 FROM chat_blocks WHERE author_hash = ?").get(me);
-  res.json({ messages: rows.map(serialize), alive, here, canWrite, blocked: !!me && !!db.prepare("SELECT 1 FROM chat_blocks WHERE author_hash = ?").get(me), now });
+  res.json({ messages: rows.map(serialize), alive, here, hereCount, canWrite, blocked: !!me && !!db.prepare("SELECT 1 FROM chat_blocks WHERE author_hash = ?").get(me), now });
 });
 
 // POST /api/chat  { urlHash, authorId, text } — scrie un mesaj (doar cu cont, dacă nu ești blocat).

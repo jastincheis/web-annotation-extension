@@ -55,6 +55,18 @@
     return res.json();
   }
 
+  // câți au chatul deschis pe pagină (fără să te marcheze „aici”); exclude = amprenta ta publică
+  async function chatHere(url, exclude) {
+    const b = await base();
+    const res = await fetch(`${b}/api/chat/here`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urlHash: await pageHash(url), exclude }),
+    });
+    if (!res.ok) throw await apiError(res, "Chatul nu răspunde");
+    return (await res.json()).count;
+  }
+
   async function chatSend(url, authorId, text) {
     const b = await base();
     const res = await fetch(`${b}/api/chat`, {
@@ -236,6 +248,7 @@
     createAnnotation,
     updateAnnotation,
     chatPoll,
+    chatHere,
     chatSend,
     chatDelete,
     chatReport,
