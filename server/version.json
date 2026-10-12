@@ -1,4 +1,4 @@
 {
-  "latest": "0.3.2",
-  "notes": "Vizionare împreună: în chat vezi la ce minut e fiecare în video și apeși „Sync” ca să vă uitați din același punct. Dacă dai tu pauză sau derulezi, ieși din sincronizare — apeși din nou Sync ca să revii."
+  "latest": "0.3.3",
+  "notes": "Pe butonul de chat vezi acum câți oameni au chatul deschis pe pagina respectivă (ex. 3, 1.5K, 30K) — chiar fără să-l deschizi."
 }
