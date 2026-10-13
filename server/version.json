@@ -1,4 +1,4 @@
 {
-  "latest": "0.3.8",
-  "notes": "Butonul galben „☕ Cumpără-mi o cafea” din „Ale mele” se vede acum pe orice site (YouTube etc.)."
+  "latest": "0.3.9",
+  "notes": "Întărire de securitate: politica de conținut (CSP) a extensiei e scrisă acum explicit în manifest. Nimic nou de folosit, doar mai bine păzit."
 }
