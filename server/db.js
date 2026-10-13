@@ -1,4 +1,5 @@
 const path = require("path");
+const fs = require("node:fs");
 const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 
@@ -274,6 +275,38 @@ function freeAnnotationsLeft(hash) {
     .prepare("SELECT COUNT(*) AS n FROM annotations WHERE author_hash = ? AND created_at > ?")
     .get(hash, Date.now() - 24 * 60 * 60 * 1000);
   return Math.max(FREE_DAILY_LIMIT - n, 0);
+}
+
+// ---- Backup automat zilnic ----
+// Copie consistentă (VACUUM INTO, ca la /api/admin/backup) într-un fișier pe zi, lângă baza de
+// date — deci pe același volum persistent ca ea. Păstrăm ultimele BACKUP_RETENTION_DAYS zile.
+// NU e backup off-box: protejează de un bug, o migrare greșită sau o ștergere accidentală, nu de
+// pierderea volumului — pentru asta descarcă din când în când /api/admin/backup. Dezactivabil cu
+// DISABLE_AUTO_BACKUP=1; locul și retenția se pot schimba cu BACKUP_DIR / BACKUP_RETENTION_DAYS.
+const BACKUP_DIR = process.env.BACKUP_DIR || path.join(path.dirname(DB_PATH), "backups");
+const BACKUP_RETENTION_DAYS = Math.max(Number(process.env.BACKUP_RETENTION_DAYS) || 14, 1);
+function runBackup() {
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true, mode: 0o700 });
+    const day = new Date().toISOString().slice(0, 10);
+    const file = path.join(BACKUP_DIR, `annotations-${day}.db`);
+    fs.rmSync(file, { force: true }); // VACUUM INTO refuză să scrie peste un fișier existent
+    db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+    fs.chmodSync(file, 0o600); // conține secrete (author_id, hash-uri de parolă)
+    // Rotație: șterge copiile mai vechi decât retenția.
+    const cutoff = Date.now() - BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    for (const name of fs.readdirSync(BACKUP_DIR)) {
+      if (!/^annotations-\d{4}-\d{2}-\d{2}\.db$/.test(name)) continue;
+      const p = path.join(BACKUP_DIR, name);
+      if (fs.statSync(p).mtimeMs < cutoff) fs.rmSync(p, { force: true });
+    }
+  } catch (err) {
+    console.warn("[Adormis] Backup automat eșuat:", err.message);
+  }
+}
+if (process.env.DISABLE_AUTO_BACKUP !== "1") {
+  runBackup(); // unul la pornire, ca să existe mereu o copie proaspătă
+  setInterval(runBackup, 24 * 60 * 60 * 1000).unref();
 }
 
 module.exports = {

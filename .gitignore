@@ -4,3 +4,4 @@ server/annotations.db-shm
 server/annotations.db-wal
 .env
 .DS_Store
+server/backups/
