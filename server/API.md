@@ -23,7 +23,9 @@ normalized address, not by the address itself.
 - `GET /api/annotations?urlHash=<sha256(url)>[&minVotes=N]` — annotations for a page
   (`?url=` only works for old extensions, ≤ 0.2.3). Without `minVotes` it returns all of
   them; the extension builds a per-page Top 10 with at most one annotation per user (their
-  best: score, then age) and only shows annotations from that top
+  best: score, then age) and only shows annotations from that top. Safety cap: at most 2000
+  per page (never reached in practice); above it, the most-voted are kept, so the per-page Top
+  stays correct
 - `GET /api/annotations/top?limit=10` — most-voted annotations across all pages, by votes
   from account holders (`votes` = that score); with `&v=<version>` → `{v, items}` or just
   `{v, same: true}` if the Top hasn't changed since that version (min. 1 vote, `limit`
@@ -117,7 +119,9 @@ Endpoint-uri disponibile:
   identificată prin amprenta SHA-256 (hex) a adresei, nu prin adresa în sine
   (`?url=` mai merge doar pentru extensiile vechi, ≤ 0.2.3). Fără `minVotes` le trimite pe
   toate; extensia face Top 10 pe pagină cu cel mult o adnotare per utilizator (cea mai bună a
-  lui: scor, apoi vechime) și arată pe pagină doar adnotările din top
+  lui: scor, apoi vechime) și arată pe pagină doar adnotările din top. Plafon de siguranță:
+  cel mult 2000 pe pagină (de neatins în practică); peste el se păstrează cele mai votate, deci
+  Topul pe pagină rămâne corect
 - `GET /api/users/:authorHash` — numele afișat al unui utilizator (`null` dacă nu are)
 - `POST /api/users/name` — `{authorId, name}`: își alege / schimbă numele (gol = îl șterge); unic
   după o cheie fără majuscule, diacritice, spații și `. _ -` (409 dacă e luat), 2–24 caractere,

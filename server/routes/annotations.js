@@ -104,6 +104,13 @@ function serialize(row) {
   };
 }
 
+// Plafon de siguranță pentru câte adnotări trimitem pentru o pagină. O pagină umplută abuziv
+// cu mii de adnotări ar întoarce un răspuns uriaș (trafic + SQLite blocat pentru toți, fiind
+// sincron). Nicio pagină reală nu se apropie de el (fără cont sunt 3 adnotări/zi de om). Când
+// s-ar atinge, păstrăm cele mai IMPORTANTE (cele mai votate, la egalitate cele mai noi) — vezi
+// GET de mai jos.
+const PAGE_MAX = 2000;
+
 // GET /api/annotations?urlHash=<amprentă>[&minVotes=N]
 // Fără minVotes se trimit toate (și cele cu scor negativ): extensia decide ce arată — dacă
 // pe pagină sunt cel mult 10, pe toate; altfel primele 10 din clasament (vezi refreshRanking).
@@ -114,13 +121,21 @@ router.get("/", (req, res) => {
 
   const min = minVotes !== undefined && Number.isFinite(Number(minVotes)) ? Number(minVotes) : -Number.MAX_SAFE_INTEGER;
 
+  // Plafonul taie doar peste PAGE_MAX: selectăm întâi cele mai votate (la egalitate cele mai
+  // noi), apoi le dăm înapoi în ordinea creării. Sub plafon — adică orice pagină reală — ies
+  // exact aceleași rânduri, în exact aceeași ordine ca înainte, deci răspunsul e neschimbat.
+  // Topul paginii (pe care extensia îl calculează după voturi) rămâne corect și la plafon:
+  // adnotările cu scor mare sunt mereu printre cele păstrate.
   const rows = db
     .prepare(
-      `SELECT * FROM annotations
-       WHERE url_hash = ? AND ${VISIBLE} AND votes >= ?
-       ORDER BY created_at ASC`
+      `SELECT * FROM (
+         SELECT * FROM annotations
+         WHERE url_hash = ? AND ${VISIBLE} AND votes >= ?
+         ORDER BY votes DESC, created_at DESC
+         LIMIT ?
+       ) ORDER BY created_at ASC`
     )
-    .all(urlHash, min);
+    .all(urlHash, min, PAGE_MAX);
 
   res.json(rows.map(serialize));
 });
