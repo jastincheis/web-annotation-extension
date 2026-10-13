@@ -259,8 +259,8 @@
 .wa-mine-forgot[hidden] { display: none; }
 .wa-mine-forgot a { color: #c4b5fd; }
 .wa-mine-id { margin-top: 3px; color: #6f6890; font-size: 10px; user-select: all; word-break: break-all; }
-#wa-root .wa-mine-support { display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 999px; background: #fbbf24; color: #1e1b2e; font-size: 11px; font-weight: 700; text-decoration: none; }
-#wa-root .wa-mine-support:hover { background: #fcd34d; }
+#wa-mine-panel a.wa-mine-support, #wa-mine-panel a.wa-mine-support:link, #wa-mine-panel a.wa-mine-support:visited { display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 999px; background: #fbbf24; color: #1e1b2e; font-size: 11px; font-weight: 700; text-decoration: none; }
+#wa-mine-panel a.wa-mine-support:hover { background: #fcd34d; }
 .wa-mine-name-note { margin-top: 4px; color: #8b839f; font-size: 10.5px; }
 .wa-mine-name-note.wa-error { color: #fca5a5; }
 .wa-mine-count {

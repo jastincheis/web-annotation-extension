@@ -8,7 +8,9 @@ links and comments that everyone with the extension can see.
 Desenează, scrie, vorbește și votează peste orice pagină web sau video — graffiti, bule,
 linkuri și comentarii pe care le vede oricine are extensia.
 
-Current version / Versiunea curentă: **0.3.7**
+Current version / Versiunea curentă: **0.3.8**
+
+[![Cumpără-mi o cafea / Buy me a coffee](https://img.shields.io/badge/Cump%C4%83r%C4%83--mi_o_cafea_%7C_Buy_me_a_coffee-fbbf24?style=for-the-badge&logo=paypal&logoColor=1e1b2e)](https://www.paypal.biz/PetreUrda)
 
 ---
 
@@ -65,6 +67,7 @@ backend (Node.js + Express + SQLite).
 
 | Version | Changes |
 |---|---|
+| **0.3.8** | The yellow coffee button in “My annotations” is now visible on every site |
 | **0.3.7** | The “☕ Buy me a coffee” link is now an easy-to-see yellow button |
 | **0.3.6** | “☕ Buy me a coffee” link (PayPal, you choose the amount) in “My annotations” and in the extension popup |
 | **0.3.5** | Security fixes after an audit: pages can no longer click Adormis buttons for you; the global Top only counts votes from accounts; stricter limits on new accounts and on free annotations |
@@ -206,6 +209,7 @@ backend-ul ei (Node.js + Express + SQLite).
 
 | Versiune | Modificări |
 |---|---|
+| **0.3.8** | Butonul galben de cafea din „Ale mele” se vede acum pe orice site |
 | **0.3.7** | Linkul „☕ Cumpără-mi o cafea” e acum un buton galben, ușor de văzut |
 | **0.3.6** | Linkul „☕ Cumpără-mi o cafea” (PayPal, alegi tu suma) în „Ale mele” și în fereastra extensiei |
 | **0.3.5** | Reparații de securitate după un audit: paginile nu mai pot apăsa butoanele Adormis în locul tău; Topul global ține cont doar de voturile celor cu cont; limite mai stricte pentru conturi noi și adnotări gratuite |
