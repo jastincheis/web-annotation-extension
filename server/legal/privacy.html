@@ -72,7 +72,7 @@
           <tr><td>Identificatorul tău</td><td>Un cod aleator generat pe dispozitivul tău la prima folosire și păstrat în browser. Nu e legat de nume, email sau cont Google, dar e un <em>pseudonim</em>, nu o identitate anonimă. Cu el îți poți edita și șterge propriile adnotări; serverul îl păstrează și nu îl publică niciodată. Public apare doar o amprentă a lui (hash SHA-256), din care codul nu poate fi aflat.</td></tr>
           <tr><td>Paginile pe care le deschizi</td><td>Doar amprenta (hash SHA-256) adresei, ca să-ți arătăm adnotările de pe pagina respectivă. Adresa în sine nu este trimisă.</td></tr>
           <tr><td>Paginile pe care adnotezi</td><td>Adresa completă a paginii, ca alți utilizatori s-o găsească. Din adresă scoatem parametrii de urmărire (ex. <code>utm_</code>, <code>fbclid</code>) și pe cei sensibili (ex. <code>token</code>, <code>code</code>, <code>session</code>, <code>email</code>). Pe YouTube păstrăm doar ID-ul video-ului, pe Netflix doar ID-ul titlului.</td></tr>
-          <tr><td>Adnotările tale</td><td>Ce creezi: desen, spray, formă, text, bulă, link, plus culoarea, poziția, intervalul dintr-un video și linkul atașat, dacă există. Sunt publice.</td></tr>
+          <tr><td>Adnotările tale</td><td>Ce creezi: desen, spray, formă, text, bulă, link, plus culoarea, poziția, intervalul dintr-un video și linkul atașat, dacă există. Salvăm și un reper din structura paginii (un selector CSS), ca adnotarea să revină pe același element la următoarea vizită. Sunt publice.</td></tr>
           <tr><td>Profilul public</td><td>Oricine are extensia poate deschide, printr-un click pe autorul unei adnotări, profilul acelui autor: toate adnotările lui vizibile, de pe toate paginile, împreună cu adresa fiecărei pagini și numărul de voturi. Profilul e identificat prin amprenta pseudonimului tău sau prin numele ales de tine, dacă ai unul. Conține numai paginile pe care <strong>ai pus tu adnotări</strong>, nu paginile pe care le-ai vizitat. Dacă ștergi o adnotare, dispare și din profil.</td></tr>
           <tr><td>Numele afișat</td><td>Opțional. Dacă îți alegi un nume, el apare public lângă adnotările tale, în clasament și în profilul tău, în locul pseudonimului „Utilizator” urmat de 4 caractere. Numele e unic: nu îl poate purta altcineva. Îl poți schimba sau șterge oricând din „Ale mele” sau din meniul extensiei; un administrator îl poate reseta dacă încalcă regulile. Nu folosi numele real complet.</td></tr>
           <tr><td>Cont cu parolă</td><td>Opțional. Numele afișat devine nume de utilizator și îți poți pune o parolă, ca să fii același utilizator pe orice calculator. Parola nu se păstrează: păstrăm doar o amprentă a ei (hash scrypt cu sare), din care nu poate fi aflată. Când intri în cont pe un calculator nou, adnotările, voturile și raportările făcute până atunci de pe acel calculator se mută în cont. Fără cont poți face cel mult 3 adnotări pe zi și nu poți pune linkuri; pentru asta numărăm adnotările tale din ultimele 24 de ore, din datele de mai sus, fără să colectăm nimic în plus. Nu cerem email, deci o parolă uitată nu se recuperează automat: poți încerca să ceri resetarea de la administrator, care poate refuza dacă nu se poate convinge că ești titularul contului.</td></tr>
@@ -85,7 +85,7 @@
         </tbody>
       </table>
     </div>
-    <p class="muted">Nu cerem nume, email, telefon sau parolă și nu citim conținutul paginilor pe care le vizitezi.</p>
+    <p class="muted">Nu cerem nume real, email sau telefon și nu citim conținutul paginilor pe care le vizitezi. Contul cu parolă este opțional; parola nu se păstrează în clar, ci doar ca amprentă (hash scrypt cu sare).</p>
   </section>
 
   <section id="scop">
@@ -127,6 +127,7 @@
       <li>Nu construim un istoric al navigării tale și nu facem profilare. Profilul public arată doar ce ai publicat tu, nu ce ai vizitat.</li>
       <li>Nu folosim cookie-uri, reclame sau servicii de analiză (analytics).</li>
       <li>Nu citim conținutul paginilor, formularele sau parolele tale.</li>
+      <li>Butonul „Cumpără-mi o cafea” duce pe site-ul PayPal; nu primim și nu vedem date de plată.</li>
     </ul>
   </section>
 
