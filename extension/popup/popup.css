@@ -48,3 +48,5 @@ input {
 }
 .version-pill.ok { background: #14321f; color: #86efac; border: 1px solid #22c55e; }
 .version-pill.outdated { border-radius: 8px; background: #3a2a0f; color: #fcd34d; border: 1px solid #f59e0b; }
+.support { display: block; margin-top: 10px; text-align: center; color: #fcd34d; font-size: 12px; text-decoration: none; }
+.support:hover { text-decoration: underline; }

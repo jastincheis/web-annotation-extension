@@ -259,6 +259,8 @@
 .wa-mine-forgot[hidden] { display: none; }
 .wa-mine-forgot a { color: #c4b5fd; }
 .wa-mine-id { margin-top: 3px; color: #6f6890; font-size: 10px; user-select: all; word-break: break-all; }
+#wa-root .wa-mine-support { display: inline-block; margin-top: 6px; color: #fcd34d; font-size: 11px; text-decoration: none; }
+#wa-root .wa-mine-support:hover { text-decoration: underline; }
 .wa-mine-name-note { margin-top: 4px; color: #8b839f; font-size: 10.5px; }
 .wa-mine-name-note.wa-error { color: #fca5a5; }
 .wa-mine-count {

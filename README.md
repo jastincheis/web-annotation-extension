@@ -8,7 +8,7 @@ links and comments that everyone with the extension can see.
 Desenează, scrie, vorbește și votează peste orice pagină web sau video — graffiti, bule,
 linkuri și comentarii pe care le vede oricine are extensia.
 
-Current version / Versiunea curentă: **0.3.5**
+Current version / Versiunea curentă: **0.3.6**
 
 ---
 
@@ -65,6 +65,7 @@ backend (Node.js + Express + SQLite).
 
 | Version | Changes |
 |---|---|
+| **0.3.6** | “☕ Buy me a coffee” link (PayPal, you choose the amount) in “My annotations” and in the extension popup |
 | **0.3.5** | Security fixes after an audit: pages can no longer click Adormis buttons for you; the global Top only counts votes from accounts; stricter limits on new accounts and on free annotations |
 | **0.3.4** | Annotations appear live while the chat is open; the Top is downloaded only when it changes |
 | **0.3.3** | The chat button shows how many people are in the chat |
@@ -204,6 +205,7 @@ backend-ul ei (Node.js + Express + SQLite).
 
 | Versiune | Modificări |
 |---|---|
+| **0.3.6** | Linkul „☕ Cumpără-mi o cafea” (PayPal, alegi tu suma) în „Ale mele” și în fereastra extensiei |
 | **0.3.5** | Reparații de securitate după un audit: paginile nu mai pot apăsa butoanele Adormis în locul tău; Topul global ține cont doar de voturile celor cu cont; limite mai stricte pentru conturi noi și adnotări gratuite |
 | **0.3.4** | Adnotările apar live cât timp chatul e deschis; Topul se descarcă doar când se schimbă |
 | **0.3.3** | Butonul de chat arată câți sunt în chat |

@@ -1,4 +1,4 @@
 {
-  "latest": "0.3.5",
-  "notes": "Actualizare de securitate: site-urile nu mai pot apăsa butoanele Adormis în locul tău (vot, chat, raportare). Topul global ține cont doar de voturile celor cu cont, iar raportările ascund automat ceva doar dacă vin de la conturi mai vechi de o zi."
+  "latest": "0.3.6",
+  "notes": "Nou: rândul „☕ Cumpără-mi o cafea” în „Ale mele” și în fereastra extensiei — dacă vrei să susții Adormis cu o donație, alegi tu suma."
 }

@@ -3718,6 +3718,9 @@
 
   // ---------- Panou "Ale mele" ----------
 
+  // Donații (opțional): profilul PayPal al autorului; cel care plătește își alege suma.
+  const SUPPORT_URL = "https://www.paypal.biz/PetreUrda";
+
   // Apelat DOAR din refreshTopbarVisibility()/closeTopbarNow() — panoul nu mai are
   // buton propriu de toggle, se ține sincron cu starea tab-ului (vezi mai sus).
   // Panoul de profil: "Ale mele" (user = tu) sau profilul altcuiva (click pe autor în Top).
@@ -3756,7 +3759,8 @@
       el("button", { class: "wa-mine-name-edit", title: state.myName ? "Schimbă-ți numele" : "Alege-ți un nume", onclick: editMyName }, "✏️"),
       accountLine(),
       // amprenta publică (nu secretul) — de dat moderatorului, ex. pentru un nume rezervat
-      el("div", { class: "wa-mine-id", title: "ID-ul tău public (nu e secret)" }, `ID public: ${state.userHash}`)
+      el("div", { class: "wa-mine-id", title: "ID-ul tău public (nu e secret)" }, `ID public: ${state.userHash}`),
+      el("a", { class: "wa-mine-support", href: SUPPORT_URL, target: "_blank", rel: "noopener noreferrer" }, "☕ Cumpără-mi o cafea")
     );
   }
 
