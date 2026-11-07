@@ -1,0 +1,44 @@
+/* Modul întunecat al paginii: filtru pe <html>, doar cât există data-wa-dark (pus de
+   dark-start.js). Filtrul pe elementul rădăcină nu strică position: fixed din pagină.
+   Cu :where() rămâne fără prioritate, deci un fundal pus de site câștigă. */
+:where(html[data-wa-dark]) { background-color: #fff; }
+html[data-wa-dark="gray"] { filter: invert(0.85) hue-rotate(180deg); }
+html[data-wa-dark="black"] { filter: invert(1) hue-rotate(180deg); }
+
+/* Pozele și video-urile se întorc la culorile lor, ca să nu arate ca un negativ.
+   Pe „gri” ies ușor mai estompate, intenționat: nici ele nu mai ard la ochi. */
+html[data-wa-dark] :is(img, video, canvas, iframe, embed, object) {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Interfața extensiei își păstrează culorile. */
+html[data-wa-dark="black"] :is(#wa-topbar, #wa-toolbar, #wa-style-popover, #wa-stats-popover,
+  #wa-leaderboard-panel, #wa-mine-panel, #wa-chat, .wa-popover, .wa-save-error, .wa-spray-confirm,
+  .wa-onboarding-callout, .wa-consent-backdrop, .wa-link-warning-backdrop, .wa-lb-detail) {
+  filter: hue-rotate(180deg) invert(1);
+}
+html[data-wa-dark="gray"] :is(#wa-topbar, #wa-toolbar, #wa-style-popover, #wa-stats-popover,
+  #wa-leaderboard-panel, #wa-mine-panel, #wa-chat, .wa-popover, .wa-save-error, .wa-spray-confirm,
+  .wa-onboarding-callout, .wa-consent-backdrop, .wa-link-warning-backdrop, .wa-lb-detail) {
+  filter: hue-rotate(180deg) invert(1) contrast(1.4286); /* 1.4286 = 1 / (2 × 0.85 − 1) */
+}
+
+/* Adnotările își păstrează culoarea aleasă. Fiecare primește separat filtrul, nu tot stratul,
+   care poate fi înalt de zeci de mii de pixeli. Conturul deschis e pus înaintea inversării,
+   deci iese deschis pe ecran și ține vizibile și desenele negre pe fundalul închis. */
+html[data-wa-dark="black"] :is(#wa-svg-layer > *, #wa-elements-layer > *) {
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.9)) hue-rotate(180deg) invert(1);
+}
+html[data-wa-dark="gray"] :is(#wa-svg-layer > *, #wa-elements-layer > *) {
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.9)) hue-rotate(180deg) invert(1) contrast(1.4286);
+}
+
+/* Evidențierea la hover rămâne ca în modul normal. */
+html[data-wa-dark="black"] :is(#wa-svg-layer > *, #wa-elements-layer > *).wa-hover-glow {
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 7px rgba(250, 204, 21, 0.9))
+    hue-rotate(180deg) invert(1);
+}
+html[data-wa-dark="gray"] :is(#wa-svg-layer > *, #wa-elements-layer > *).wa-hover-glow {
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 7px rgba(250, 204, 21, 0.9))
+    hue-rotate(180deg) invert(1) contrast(1.4286);
+}

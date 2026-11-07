@@ -223,6 +223,7 @@
     trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8"/>',
     pin: '<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    moon: '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>',
     chat: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
     grip: '<path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01"/>',
     mark: '<path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M3 22h8"/>',
@@ -361,6 +362,8 @@
     els.mineBtn = btn("wa-mine-btn", "pin", "Adnotările mele pe pagina asta", () => setMinePanelOpen(!state.myPanelOpen));
     els.topBtn = btn("wa-top-btn", "trophy", "Arată / ascunde Topul", () => toggleLeaderboard());
     els.chatBtn = btn("wa-chat-btn", "chat", "Chat cu cei de pe pagina asta", () => setChatOpen(!chat.open));
+    els.darkBtn = btn("wa-dark-btn", "moon", "Pagină închisă: pornit / oprit", toggleDarkPage);
+    els.darkShadeBtn = el("button", { class: "wa-dock-btn wa-dark-shade", hidden: "true", title: "Schimbă nuanța: gri / negru", onclick: toggleDarkShade });
     els.chatBadge = el("span", { class: "wa-chat-badge", hidden: "true" });
     els.chatBtn.append(els.chatBadge);
     const closeBtn = btn("wa-close", "close", "Închide bara (Esc)", () => toggleToolbar(false));
@@ -382,6 +385,9 @@
       el("span", { class: "wa-dock-sep" }),
       els.styleBtn,
       el("span", { class: "wa-dock-sep" }),
+      els.darkBtn,
+      els.darkShadeBtn,
+      el("span", { class: "wa-dock-sep" }),
       els.mineBtn,
       els.topBtn,
       els.chatBtn,
@@ -390,11 +396,37 @@
     );
     els.stylePopover = buildStylePopover();
     els.statsPopover = buildStatsPopover();
+    window.__waDark?.subscribe(refreshDarkButtons);
+    refreshDarkButtons(window.__waDark?.state() || { on: false, shade: "gray" });
     wireDockDragging(dock, grip);
     refreshStyleControls();
     tools[0].classList.add("active"); // „Selectează” = starea de pornire (nicio unealtă activă)
     els.topBtn.classList.add("active"); // Topul e vizibil implicit
     return dock;
+  }
+
+  // Modul întunecat: dark-start.js ține starea, aici sunt doar cele două butoane.
+  function refreshDarkButtons({ on, shade }) {
+    els.darkBtn?.classList.toggle("active", on);
+    if (!els.darkShadeBtn) return;
+    els.darkShadeBtn.hidden = !on;
+    els.darkShadeBtn.textContent = shade === "black" ? "Negru" : "Gri";
+  }
+
+  function toggleDarkPage() {
+    const dark = window.__waDark;
+    if (!dark) return;
+    const { on } = dark.state();
+    if (!on && dark.pageLooksDark()) {
+      showSaveError("Pagina asta e deja închisă, așa că am lăsat-o cum e.", { info: true });
+      return;
+    }
+    dark.setOn(!on);
+  }
+
+  function toggleDarkShade() {
+    const dark = window.__waDark;
+    dark?.setShade(dark.state().shade === "black" ? "gray" : "black");
   }
 
   function buildStylePopover() {

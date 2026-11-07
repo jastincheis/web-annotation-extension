@@ -1,4 +1,4 @@
 {
-  "latest": "0.3.9",
-  "notes": "Întărire de securitate: politica de conținut (CSP) a extensiei e scrisă acum explicit în manifest. Nimic nou de folosit, doar mai bine păzit."
+  "latest": "0.3.10",
+  "notes": "Pagină închisă: butonul cu lună din bară face site-urile albe gri sau negre, pe fiecare site în parte. Adnotările își păstrează culorile."
 }
