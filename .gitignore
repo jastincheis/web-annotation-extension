@@ -5,3 +5,4 @@ server/annotations.db-wal
 .env
 .DS_Store
 server/backups/
+.claude/settings.local.json
